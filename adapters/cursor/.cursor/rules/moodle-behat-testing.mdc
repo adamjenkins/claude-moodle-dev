@@ -234,9 +234,20 @@ And I should see "this will fail"     # forces a wait you can attach to
       --tags @local_example --format=progress
 ```
 
+## Moodle 5.3 notes (beta — re-verify at 5.3.0)
+
+- Selectors: modal title `h5.modal-title` → `h2.modal-title` ([MDL-75699](https://tracker.moodle.org/browse/MDL-75699)); nav items are `.mds-nav-pill` (selected `.mds-nav-pill--selected`), not `.nav-link.active` ([MDL-87830](https://tracker.moodle.org/browse/MDL-87830), [MDL-89294](https://tracker.moodle.org/browse/MDL-89294)); navbar search is an inline field; the `togglesearch` button is only shown on small screens, so click it only if visible (see `behat_search.php`) ([MDL-87834](https://tracker.moodle.org/browse/MDL-87834), [MDL-89010](https://tracker.moodle.org/browse/MDL-89010)).
+- Exporter/web-service strings use numeric entities (`&#38;` not `&amp;`), also 5.2.2+ ([MDL-79755](https://tracker.moodle.org/browse/MDL-79755)).
+- New step `I set the focus on the "<element>" "<selector>"` (@javascript only) ([MDL-84065](https://tracker.moodle.org/browse/MDL-84065)).
+- `--colourmode=dark` on `admin/tool/behat/cli/init.php`/`util.php`; scenarios assuming colour modes are off add `Given the run is not using a colour mode` ([MDL-68037](https://tracker.moodle.org/browse/MDL-68037)).
+- Steps `the course linear navigation should (not) be visible` ([MDL-87575](https://tracker.moodle.org/browse/MDL-87575)); linear nav is on by default for opted-in formats ([MDL-89406](https://tracker.moodle.org/browse/MDL-89406)).
+- `I set portfolio instance "X" to "Y"` deprecated → `I set the portfolio instance "X" to "Y"` ([MDL-89069](https://tracker.moodle.org/browse/MDL-89069)).
+- Full 5.3 catalogue: `moodle-5-3-changes`.
+
 ## References
 
 - Behat in Moodle: https://moodledev.io/general/development/tools/behat
 - Writing tests: https://moodledev.io/general/development/tools/behat/writing
 - Step reference: https://moodledev.io/general/development/tools/behat/writing#step-definitions
 - Data generators: https://moodledev.io/docs/apis/subsystems/testing/generators#behat
+- See also: `moodle-field-lessons` (generalized field lessons for this area)

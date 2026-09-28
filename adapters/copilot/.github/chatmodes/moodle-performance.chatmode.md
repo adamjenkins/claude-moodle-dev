@@ -327,6 +327,12 @@ $CFG->profilingautostart = false;
 
 Per-request: `Site admin > Development > Profiling`.
 
+## Moodle 5.3 notes (beta — re-verify at 5.3.0)
+
+- `queue_adhoc_task($task, true)` now returns the existing task id for a duplicate (was `false`); don't test truthiness for "newly queued" ([MDL-86422](https://tracker.moodle.org/browse/MDL-86422)).
+- `adhoc_task::set_soft_retry_delay()` reschedules without counting a failure (also 5.2.2+) ([MDL-79763](https://tracker.moodle.org/browse/MDL-79763)); block uninstall deletes instances in an ad-hoc task ([MDL-89289](https://tracker.moodle.org/browse/MDL-89289)).
+- Full 5.3 catalogue: `moodle-5-3-changes`.
+
 ## References
 
 - MUC: https://moodledev.io/docs/apis/subsystems/muc
@@ -334,3 +340,4 @@ Per-request: `Site admin > Development > Profiling`.
 - Performance recommendations: https://docs.moodle.org/en/Performance_recommendations
 - DB API recordsets: https://moodledev.io/docs/apis/core/dml#get_recordset
 - Profiling: https://moodledev.io/general/development/tools/profiling
+- See also: `moodle-field-lessons` (generalized field lessons for this area)

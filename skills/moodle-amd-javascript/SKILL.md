@@ -241,6 +241,16 @@ Moodle's AMD has limited unit-test infrastructure. Options:
 - **Behat with `@javascript`** — full browser testing
 - **Jest** (Moodle 4.4+) — `npx grunt jest` runs `tests/jest/*.test.js` if present
 
+## Moodle 5.3 notes (beta — re-verify at 5.3.0)
+
+- Do not import `theme_boost/bootstrap/*`: use `import {Tooltip} from 'bootstrap'` (5.3+) or `'theme_boost/index'` for multi-version plugins, then rebuild; exception: `util`/`dom` helpers still load directly (`bootstrap/dom/event-handler` on 5.3+, `theme_boost/bootstrap/dom/event-handler` on ≤5.2) ([MDL-88766](https://tracker.moodle.org/browse/MDL-88766)).
+- Modal title is `<h2 class="modal-title fs-5">` (selectors on `h5.modal-title` break) ([MDL-75699](https://tracker.moodle.org/browse/MDL-75699)); nav items are React `.mds-nav-pill`, not `.nav-link`/`.moremenu` ([MDL-87830](https://tracker.moodle.org/browse/MDL-87830), [MDL-89294](https://tracker.moodle.org/browse/MDL-89294)).
+- React mounting: `core/import` (native dynamic `import()` for `@moodle/lms/...` specifiers) and `core/component` `appendToDom()`/`prependToDom()` ([MDL-88505](https://tracker.moodle.org/browse/MDL-88505)); PHP side `\core\output\html_writer::react_component($module, $props)`, do not pre-`json_encode` props ([MDL-89296](https://tracker.moodle.org/browse/MDL-89296)).
+- block_timeline is now ESM/React; its AMD modules and templates are gone ([MDL-88287](https://tracker.moodle.org/browse/MDL-88287)).
+- `core/imagedetails/modal` `getImageDetails(file)` resolves `{alt, presentation, width, height}` or `null` ([MDL-89214](https://tracker.moodle.org/browse/MDL-89214)).
+- TinyMCE picks its skin from `data-bs-theme` at setup; plugin dialogs/content CSS should use theme colour tokens ([MDL-68037](https://tracker.moodle.org/browse/MDL-68037)).
+- Full 5.3 catalogue: `moodle-5-3-changes`.
+
 ## References
 
 - JavaScript modules: https://moodledev.io/docs/apis/subsystems/javascript-modules
@@ -249,3 +259,4 @@ Moodle's AMD has limited unit-test infrastructure. Options:
 - core/ajax: https://moodledev.io/docs/apis/subsystems/external/writing-a-service#calling-from-javascript
 - Modal: https://moodledev.io/docs/apis/subsystems/output/modal
 - Coding style: https://moodledev.io/general/development/policies/codingstyle/javascript
+- See also: `moodle-field-lessons` (generalized field lessons for this area)

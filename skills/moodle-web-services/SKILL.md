@@ -145,6 +145,14 @@ Skipping any of (1)-(3) is a security bug.
 
 For 4.2+ compatibility wrappers, see `lib/classes/external/`.
 
+**Moodle 5.3 (beta — re-verify at 5.3.0):**
+- **Breaking:** global `\external_api`, `\external_value` etc. emit renamed-class notices and `external_format_string()`, `external_generate_token()` etc. throw; `use core_external\...` and `\core_external\util::*` ([MDL-81225](https://tracker.moodle.org/browse/MDL-81225), [MDL-76583](https://tracker.moodle.org/browse/MDL-76583)).
+- **Breaking:** `login/token.php` is POST-only for credentials and `appsitecheck` is removed ([MDL-87010](https://tracker.moodle.org/browse/MDL-87010)).
+- Build mod `get_*_by_courses` returns from `helper_for_get_mods_by_courses::standard_coursemodule_elements_returns()` ([MDL-87241](https://tracker.moodle.org/browse/MDL-87241)).
+- Exporter strings use numeric entities (`&#38;`), also 5.2.2+ ([MDL-79755](https://tracker.moodle.org/browse/MDL-79755)); `'allowcorsrequests' => true` for nologin AJAX only ([MDL-87150](https://tracker.moodle.org/browse/MDL-87150)).
+- REST routes: OAuth2 scopes `#[scopeset]`/`#[unscoped_resource]` ([MDL-89089](https://tracker.moodle.org/browse/MDL-89089)); tokens via `\core\api\token_manager` ([MDL-87706](https://tracker.moodle.org/browse/MDL-87706)); OAuth2 server depends on `league/oauth2-server` via Composer, so run `composer install` ([MDL-88457](https://tracker.moodle.org/browse/MDL-88457); status checked via `\core\composer`, [MDL-88576](https://tracker.moodle.org/browse/MDL-88576)).
+- Full 5.3 catalogue: `moodle-5-3-changes`.
+
 ## Parameter types (PARAM_*)
 
 | Constant | Use |
@@ -281,3 +289,4 @@ $this->assertCount(2, $result);
 - Calling from JS: https://moodledev.io/docs/apis/subsystems/external/writing-a-service#calling-from-javascript
 - File uploads: https://moodledev.io/docs/apis/subsystems/external/files
 - Token API: https://moodledev.io/docs/apis/subsystems/external/security
+- See also: `moodle-field-lessons` (generalized field lessons for this area)

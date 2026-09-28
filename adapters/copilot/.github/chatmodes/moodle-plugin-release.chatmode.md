@@ -1,0 +1,171 @@
+---
+description: Use when preparing a Moodle plugin release — bumping $plugin->version vs $plugin->release, writing CHANGES.md/changelog entries, staging and tagging an annotated vX.Y.Z release, publishing to the Moodle Plugins directory via GitHub Actions, and confirming the release actually landed. Skip when only doing a schema-change version bump (use /moodle-bump-version) or pre-release QA (use moodle-definition-of-done / moodle-release-preflight).
+tools: ['codebase', 'search', 'editFiles', 'runCommands']
+---
+# Moodle Plugin Release
+
+## Overview
+
+Release mechanics for a Moodle plugin: the version numbers, the notes, the
+commit and tag, publishing, and checking that the release really arrived. The
+tag freezes a commit and, with a tag-triggered release workflow, **publishes it
+the moment it is pushed**, so every step before the push has to be read back,
+not assumed.
+
+## When to Use
+
+- A release has been decided on and the version bump approved
+- Setting up tag-triggered publishing to the Moodle Plugins directory
+- Checking whether a pushed tag actually reached the Plugins directory / Packagist
+- **Skip when:** the change only needs a `$plugin->version` bump for a schema
+  change (`/moodle-bump-version`), or you are still doing QA (walk
+  `moodle-definition-of-done` and `moodle-release-preflight` first).
+
+## 0. Preconditions — stop if any fails
+
+- **The bump was asked for.** Releases are deliberate; don't bump `release`
+  as a side effect of other work. Default to a patch (`z`) increment; a minor
+  or major bump needs a stated reason.
+- **QA is done**: `moodle-definition-of-done` walked for everything going into
+  the release; `moodle-release-preflight` walked if the plugin is being
+  submitted or its security surface changed.
+- **Run every static step of the plugin's own CI locally** and see each exit 0,
+  not a subset. phpcs passing does not cover `phpdoc` (moodlecheck) docblock
+  rules, and a missing `@param` found by Actions after tagging costs a moved tag:
+
+      grep -n 'moodle-plugin-ci' .github/workflows/*.yml
+      for c in phplint phpcpd phpmd validate savepoints; do
+          moodle-plugin-ci $c ./; echo "$c exit=$?"
+      done
+      for c in phpcs phpdoc; do
+          moodle-plugin-ci $c --max-warnings 0 ./; echo "$c exit=$?"
+      done
+
+  `--max-warnings` exists only on `phpcs` and `phpdoc`; on other commands it
+  aborts with "option does not exist", which looks like findings but is a
+  broken invocation. `phpmd` exits 0 over violations, so read its output.
+  `mustache` and `grunt` need a full Moodle checkout (`-m`), as in CI.
+
+## 1. `version.php` — two different numbers
+
+```php
+$plugin->version  = 2026092800;   // YYYYMMDDXX build number — must strictly increase
+$plugin->release  = '1.4.2';      // human, semver-like — bumped deliberately
+$plugin->requires = 2025041400;   // minimum Moodle build
+$plugin->supported = [500, 502];  // RANGE [low, high] of Moodle branches
+$plugin->maturity = MATURITY_STABLE;
+```
+
+| Number | When it changes | Rule |
+|---|---|---|
+| `version` | Any schema/upgrade/capability/cache-definition change **must** bump it; every release bumps it | Strictly greater than every previously shipped value; date-serial |
+| `release` | Only when cutting a release | Doesn't drag along with a schema bump; patch by default |
+
+A schema change needs a `version` bump plus a matching `upgrade.php` savepoint
+(see `/moodle-bump-version`), but does **not** by itself mean a new `release`.
+
+## 2. Release notes — keep all of them consistent
+
+- `CHANGES.md` (if the plugin uses it) — this version's notes; this is what
+  reviewers and the Plugins directory see.
+- `changelog.md` / `CHANGELOG.md` — prepend `## [x.y.z] - YYYY-MM-DD` with
+  `### Added / Changed / Fixed / Security` (Keep a Changelog).
+- `README.md` — update if behaviour or requirements changed (supported
+  Moodle versions must match `$plugin->supported`).
+- Every claim must be verifiable: list only checks you actually ran.
+
+## 3. Stage explicitly — never `git add -A`
+
+Other work may be sitting in the tree. Stage named paths, or re-read
+`git status --porcelain` immediately before staging and investigate any file
+you don't expect (don't sweep it in, don't delete it).
+
+## 4. Commit, read back, then tag
+
+```bash
+git commit -m "Release 1.4.2: <one-line summary>"
+git show --stat HEAD          # file list must match the release notes
+git tag -a v1.4.2 -m "1.4.2: <one-line summary>"
+git describe --tags --exact-match HEAD   # tag is on the commit you just read
+```
+
+If the read-back surprises you, delete the tag before it goes anywhere and fix
+the commit. Never leave a tag on a commit whose contents you haven't verified.
+
+## 5. Publishing to the Moodle Plugins directory
+
+A tag-triggered workflow using the moodlehq reusable release workflow:
+
+```yaml
+# .github/workflows/moodle-release.yml
+name: Release Plugin version to Moodle Marketplace
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to be released (e.g. v1.4.0)'
+        required: true
+jobs:
+  release-to-marketplace:
+    uses: moodlehq/moodle-plugin-release/.github/workflows/moodle-release.yml@main
+    with:
+      tag: ${{ inputs.tag }}
+    secrets:
+      MOODLE_MARKETPLACE_TOKEN: ${{ secrets.MOODLE_MARKETPLACE_TOKEN }}
+```
+
+- The plugin must already exist in the directory (first submission is manual);
+  the token comes from your moodle.org account and is stored as a repo secret.
+- With this workflow present, **pushing a `v*` tag publishes the release**.
+  Say so explicitly when handing a push to someone else, so they can hold the
+  tag back if they only meant to push the branch.
+- A red run usually means a missing or expired token secret; re-run it via
+  `workflow_dispatch` with the tag.
+
+## 6. Pushing tags
+
+- Prefer `git push --follow-tags`, or `git push && git push origin v1.4.2`.
+- **Avoid pushing many tags in one `git push --tags`:** GitHub does not
+  create push events when a single push updates more than three tags, so no
+  tag-triggered workflow runs at all. Push tags one at a time or in batches of
+  at most three.
+
+## 7. A pushed tag is not a published release
+
+Confirm ingestion downstream; these checks are anonymous HTTPS reads:
+
+- **Plugins directory:** the release workflow run went green, and the version
+  appears on the plugin's page.
+- **Packagist** (if the plugin is on Composer): the newest version clients
+  will actually see:
+
+      curl -s https://repo.packagist.org/p2/<vendor>/<package>.json \
+        | python3 -c "import json,sys;d=json.load(sys.stdin);k=list(d['packages'])[0];print(d['packages'][k][0]['version'])"
+
+  Until this prints the new tag, no client-side cache clearing helps.
+
+A failed remote read (auth error, network) is not evidence that something is
+missing. Record the release as "committed and tagged, push pending" until the
+push is confirmed, never as pushed.
+
+## Common mistakes
+
+| Mistake | Consequence | Fix |
+|---|---|---|
+| `release` bumped along with every schema change | Release numbers drift from actual releases | Bump `version` for schema; `release` only when releasing |
+| Tagging after phpcs alone | CI fails on `phpdoc`/`savepoints` after the tag is public | Run every CI step locally first |
+| `git add -A` for the release commit | Unrelated files shipped and tagged | Stage named paths; read back `git show --stat` |
+| `--max-warnings` passed to every command | Commands abort; looks like findings | Only `phpcs` and `phpdoc` accept it |
+| `git push --tags` with 4+ new tags | No workflow runs, nothing published | Push ≤3 tags per push |
+| `$plugin->supported = [502]` | Malformed: core throws `coding_exception` ("Incorrect syntax in plugin supported declaration") | `[502, 502]` for a single branch |
+| Treating a pushed tag as released | Clients can't see the version; time lost debugging caches | Check the workflow run and Packagist p2 JSON |
+
+## References
+
+- Version file: https://moodledev.io/docs/apis/commonfiles/version.php
+- Plugin release workflow: https://github.com/moodlehq/moodle-plugin-release
+- Plugin contribution checklist: https://moodledev.io/general/community/plugincontribution/checklist
+- moodle-plugin-ci: https://moodlehq.github.io/moodle-plugin-ci/
+- See also: `moodle-definition-of-done`, `moodle-release-preflight`, `moodle-ci-matrix`

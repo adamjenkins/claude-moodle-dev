@@ -256,6 +256,16 @@ moodle.org reviewers run a11y checks. Common rejection reasons:
 - Custom widgets without ARIA / keyboard
 - Missing `<label>` on form fields
 
+## Moodle 5.3 notes (beta — re-verify at 5.3.0)
+
+- Modal title is now `<h2 class="modal-title fs-5">`; start modal body headings at `<h3>` ([MDL-75699](https://tracker.moodle.org/browse/MDL-75699)).
+- Experimental dark mode: no literal colours, `bg-white` or `text-dark`; use `--bs-*`/`--mds-*` tokens or `bg-body*`/`text-body*` utilities, and icons via the pix API so they inherit `currentColor` ([MDL-68037](https://tracker.moodle.org/browse/MDL-68037)).
+- `core/notification_base` accepts `headinglevel` (1-6) ([MDL-88458](https://tracker.moodle.org/browse/MDL-88458)); override `{{$searchrole}}{{/searchrole}}` in `core/search_input_auto` to drop a nested search landmark ([MDL-88833](https://tracker.moodle.org/browse/MDL-88833)).
+- Course-index subsection ARIA (`aria-owns`/`aria-expanded`) moved to the delegating activity's treeitem; overrides of `courseindex/cm` and `courseindex/section` must change together ([MDL-88949](https://tracker.moodle.org/browse/MDL-88949)).
+- Behat: `I set the focus on the "<element>" "<selector>"` (@javascript only) ([MDL-84065](https://tracker.moodle.org/browse/MDL-84065)); `--colourmode=dark` runs a suite in dark mode ([MDL-68037](https://tracker.moodle.org/browse/MDL-68037)).
+- `core/imagedetails/modal` `getImageDetails(file)` collects alt text / decorative flag for your own image-upload UI ([MDL-89214](https://tracker.moodle.org/browse/MDL-89214)); `flexible_table::set_columnheadersattributes()` (also 5.2.3+) ([MDL-89384](https://tracker.moodle.org/browse/MDL-89384)).
+- Full 5.3 catalogue: `moodle-5-3-changes`.
+
 ## References
 
 - Accessibility: https://moodledev.io/general/development/policies/accessibility
@@ -263,3 +273,4 @@ moodle.org reviewers run a11y checks. Common rejection reasons:
 - WAI-ARIA APG: https://www.w3.org/WAI/ARIA/apg/
 - Boost a11y: https://docs.moodle.org/dev/Boost_-_Accessibility
 - pix renderer: https://moodledev.io/docs/apis/subsystems/output#pix-icons
+- See also: `moodle-field-lessons` (generalized field lessons for this area)

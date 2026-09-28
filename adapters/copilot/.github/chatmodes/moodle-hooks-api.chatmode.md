@@ -183,3 +183,13 @@ php admin/cli/hooks_list.php --hook=core\\hook\\output\\before_http_headers
 - [ ] Tests cover both the action and the no-op branch
 - [ ] Legacy callback removed (or version-gated) after migration
 - [ ] `version.php` bumped
+
+## Moodle 5.3 notes (beta — re-verify at 5.3.0)
+
+- New hook `\core\hook\email\before_email_to_user`, dispatched by `email_to_user()`: edit `$hook->email` fields, call `$hook->email->add_additional_header()`, or veto sending with `$hook->email->add_block_reason()` ([MDL-69724](https://tracker.moodle.org/browse/MDL-69724)).
+- `\core_user\hook\extend_user_menu`: `add_navitem()`/`get_navitems()` deprecated → `add_menu_item()` with `\core_user\output\user_action_menu\{link,divider,header,text}` ([MDL-88938](https://tracker.moodle.org/browse/MDL-88938)).
+- Full 5.3 catalogue: `moodle-5-3-changes`.
+
+## See also
+
+- `moodle-field-lessons` (generalized field lessons for this area)

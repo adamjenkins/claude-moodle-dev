@@ -1,0 +1,221 @@
+---
+description: Use when about to report a Moodle plugin task complete, open a pull request, or hand work over for review. A definition-of-done checklist covering code style and phpdoc gates (moodle-plugin-ci, phpcs, moodlecheck), PHPUnit and Behat, course lifecycle handling (backup, restore, reset, uninstall), privacy provider coverage, upgrade path, lang strings, release-notes consistency, proving each gate is non-vacuous, and verifying the effect rather than the exit code. Skip when exploring or prototyping with no intent to ship yet.
+globs: ["**/*.php", "**/*.mustache", "**/amd/src/**/*.js"]
+alwaysApply: false
+---
+# Moodle Definition of Done
+
+## Overview
+
+A checklist to walk before claiming any Moodle plugin change is finished. Every
+item is reported as **pass**, **fail**, or **not applicable, because ...**.
+Evidence comes before assertions: run the command, read its output, and state
+what you saw. A gate you did not run is not a pass.
+
+## When to Use
+
+- Before saying "done" on a plugin feature, fix, or refactor
+- Before opening a pull request or requesting a review
+- Before handing a change to a release step (then also run `moodle-release-preflight`)
+- **Skip when:** spiking or prototyping code that will not be merged
+
+## Two rules that govern every item
+
+1. **A gate that printed nothing has proven nothing.** Before trusting a
+   "0 findings" result, feed the gate one known-bad input (a missing docblock, an
+   unsorted lang key, a deliberately failing test) and confirm it complains. A
+   grep pattern that can never match, a test suite that is empty, and a linter
+   pointed at the wrong path all look exactly like "clean".
+2. **Verify the effect, not the exit code.** A script that did not throw has not
+   necessarily worked. Read the DB row, the rendered page, the file on disk, or
+   the log line that proves the change happened.
+
+## 1. Code style and phpdoc
+
+Run the same binary CI runs; it has real exit codes:
+
+```bash
+for s in phplint phpmd "phpcs --max-warnings 0" "phpdoc --max-warnings 0" validate savepoints; do
+    moodle-plugin-ci $s /path/to/plugin > "ci_${s%% *}.log" 2>&1
+    echo "$s exit: $?"
+done
+```
+
+- Run `mustache` and `grunt` against the plugin installed inside a Moodle tree
+  (`-m <moodle>`), not the repo path; `mustache` exits 1 'not within basename'
+  on a path outside it.
+- `phpmd` exits 0 even when it reports violations, so read its log.
+- The standalone `local_moodlecheck` CLI (`local/moodlecheck/cli/moodlecheck.php`)
+  also exits 0 on errors, and its text output reads `Line 54: ...`. If you parse
+  it, grep `Line [0-9]+:` and prove the pattern matches known-bad output once.
+- Lint JS and CSS from inside a Moodle tree, at the plugin's real path: core's
+  ESLint config scopes AMD rules by path, so a copy elsewhere gets other rules.
+- Never trust `grunt ... --force`: it downgrades every later failure to a
+  warning and still prints "Done, but with warnings."
+
+**Docblock gotchas moodlecheck catches:**
+
+- A `@param` type containing a space (`array<string, mixed>`, `array{a: int}`)
+  is read as type plus name, so it reports an incomplete parameter list. Keep
+  `@param` types plain and describe the shape in prose.
+- Every function, test helpers included, needs a description sentence and
+  complete `@param` / `@return` tags. Signature edits without a matching
+  `@param` are the usual miss.
+- `@return` is not name-matched (generics are fine there); never write a
+  literal `@param` inside docblock prose.
+
+## 2. Recurring review gates
+
+- Every Mustache template has an `Example context (json):` block in its docblock.
+- `$string[...]` keys in `lang/en/<component>.php` are sorted alphabetically.
+  Assert it with a script over the whole file after any insertion rather than
+  picking the insertion point by eye. phpcs checks sorting only with
+  `--runtime-set moodleBranch <n>`.
+- Every string key the code uses exists. Grep for static keys, and load the
+  pages that build keys dynamically (`get_string('status_' . $state, ...)`)
+  and check that no `[[` placeholder appears.
+- `defined('MOODLE_INTERNAL') || die();` only in files with side effects
+  (`lib.php`, `db/*.php`, `settings.php`, `version.php`); moodle-cs flags it in
+  plain class files as `MoodleInternalNotNeeded`.
+- No scaffolding placeholders left in file headers (`@copyright`, author).
+- `version.php` `$plugin->requires` is not below the lowest Moodle branch the
+  plugin claims to support.
+
+## 3. Tests
+
+- The plugin's PHPUnit tests pass; Behat features pass if the change touches UI
+  or user-visible behavior.
+- **Confirm plugin tests actually exist and ran.** `moodle-plugin-ci phpunit`
+  over an empty `tests/` directory passes, so "CI is green" is not evidence of
+  coverage. Check the run's test count.
+- PHPUnit loads all of core, but a web request does not. Code calling a core
+  free function (`create_course()`, `fulldelete()`) without the matching
+  `require_once` can pass tests and fail in the browser. Hit that path for real.
+
+## 4. Upgrade path
+
+- A `db/install.xml` change is paired with a `db/upgrade.php` step and a savepoint
+  (`upgrade_plugin_savepoint()`, or `upgrade_mod_savepoint()` for activities), and the `$plugin->version` build
+  number is raised. A schema change must bump `$plugin->version`; the
+  human-readable `$plugin->release` is a separate decision.
+- Test both paths: a fresh install and an upgrade from the previous release.
+  Both must produce the same schema, and the install log must contain no
+  `XMLDB has detected` or `Debugging:` lines.
+- `moodle-plugin-ci savepoints` passes.
+
+## 5. Course lifecycle
+
+If the plugin stores course- or activity-linked data, check each of these, or
+state why it does not apply:
+
+- **Backup and restore:** `backup/moodle2/backup_<mod>_activity_task.class.php`,
+  `backup_<mod>_stepslib.php` and the restore counterparts cover every table
+  holding course data. A restored course behaves like the original.
+- **Restore cleans its input.** A crafted `.mbz` is untrusted input: apply the
+  same `clean_param()` / allowlist logic the forms apply.
+- **Course reset needs all three callbacks** for an activity module:
+
+```php
+function myplugin_reset_course_form_definition(&$mform) {
+    $mform->addElement('header', 'mypluginheader', get_string('modulenameplural', 'mod_myplugin'));
+    $mform->addElement('advcheckbox', 'reset_myplugin_attempts', get_string('removeattempts', 'mod_myplugin'));
+}
+
+function myplugin_reset_course_form_defaults($course) {
+    return ['reset_myplugin_attempts' => 1];
+}
+
+function myplugin_reset_userdata($data) {
+    // Delete user data when $data->reset_myplugin_attempts is set, reset
+    // gradebook entries, and return a status array for the reset report.
+}
+```
+
+  (Core looks these up as `<modname>_reset_...`, without the `mod_` prefix, e.g.
+  `forum_reset_userdata()` in `mod/forum/lib.php`.) A lone `reset_userdata`
+  leaves the option unreachable in the reset form and grades stale.
+- **Uninstall:** add `db/uninstall.php` with `xmldb_<component>_uninstall()` if
+  the plugin writes outside its own tables (core grade items, files, config in
+  other components) that would otherwise be orphaned.
+- **Privacy:** every table and external location declared in `get_metadata()` is
+  handled by export and by all three delete paths, and a `provider_test`
+  exercises contexts, users, export and delete on generated data. A declared
+  table that is never serviced is a compliance defect; a stale table name after
+  a rename throws. See `moodle-privacy-gdpr`.
+
+## 6. Security self-review of changed sinks
+
+For every changed entry point (form handler, external function, AJAX call,
+`pluginfile` callback):
+
+- `require_login()` / `require_capability()` in the right context, and the
+  capability re-checked at asynchronous sinks (scheduled/adhoc tasks, deferred
+  grade pushes), not only at request time.
+- Ids and values from the client are re-validated server-side, never trusted
+  from hidden fields.
+- Any client-side limit (size, duration, count) is also enforced server-side.
+- Output is escaped at the sink (`s()`, `format_string()`, `format_text()`),
+  especially anything that reaches `innerHTML`.
+- User-uploaded files are served with `$forcedownload = true` unless their
+  MIME type is validated.
+
+Before a release, run `moodle-release-preflight` for the full list of defect
+classes reviews have caught, and `moodle-security-audit` for the broad checklist.
+
+## 7. Verified in a running site
+
+Green tests are not the finish line. Observe the changed behavior on a real
+Moodle site after installing the plugin and purging caches:
+
+- Read the stored record, the rendered notice, or the screenshot's actual
+  content, not just the fact that the command returned.
+- Watch values set before a bulk write (restore, import, `update_record()`)
+  that can silently overwrite them.
+- Check the web server log for PHP warnings and `Debugging:` output from the
+  pages you touched, with developer debugging enabled.
+
+## 8. Release notes and docs
+
+- `README.md` still describes current behavior and settings.
+- The changelog records user-visible changes, in the format the plugin already
+  uses.
+- Any user manual or help page that names a changed, renamed, or removed
+  setting, field or page is updated. A removal is the dangerous case: the
+  doc becomes actively wrong rather than incomplete.
+- `$plugin->release` is changed only as part of a deliberate release, and
+  `composer.json` (if present) is still valid.
+
+## 9. Clean working state
+
+- Every background process you started (Behat, a PHP built-in server,
+  chromedriver, watchers) is stopped, and the port is free. Stop processes by
+  exact PID after checking their command line, not by broad `pkill -f` patterns.
+- The diff contains only intended files: no build output, logs, `node_modules/`,
+  or hand edits to `amd/build/` or `thirdparty/` code.
+
+## Common mistakes
+
+| Mistake | Consequence | Fix |
+|---|---|---|
+| Reporting "clean" from a gate that printed nothing | Real errors ship; CI fails later | Prove the gate fires on a known-bad input |
+| Parsing moodlecheck output with the wrong pattern | "0 findings" forever | Match `Line [0-9]+:` and test the grep |
+| `grunt --force` treated as success | Stylelint or ESLint errors hidden as warnings | Run `moodle-plugin-ci grunt` and check its exit code |
+| Empty `tests/` with a green CI badge | No coverage, false confidence | Check the reported test count |
+| Only `*_reset_userdata` implemented | Reset option never shown; grades stale | Implement all three reset callbacks |
+| Restore trusts `.mbz` values | Stored XSS or broken data via crafted backup | Clean restored fields like form input |
+| `install.xml` changed without an upgrade step | Upgraded sites differ from fresh installs | Add an `upgrade.php` step plus savepoint |
+| Privacy table declared but never exported or deleted | Compliance defect | Cover every table in export and delete, with a test |
+| "The script didn't throw" treated as success | Setting not saved, record not deleted | Read back the effect |
+
+## References
+
+- https://moodledev.io/general/development/tools/phpcs
+- https://moodledev.io/general/development/policies/codingstyle
+- https://moodledev.io/general/development/tools/behat
+- https://moodledev.io/general/development/tools/phpunit
+- https://moodledev.io/docs/guides/upgrade
+- https://moodledev.io/docs/apis/subsystems/backup
+- https://moodledev.io/docs/apis/subsystems/privacy
+- https://moodledev.io/docs/apis/plugintypes/mod
+- https://moodledev.io/general/community/plugincontribution/checklist
+- https://moodlehq.github.io/moodle-plugin-ci/

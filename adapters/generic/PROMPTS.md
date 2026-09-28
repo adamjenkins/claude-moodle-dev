@@ -4,6 +4,244 @@ Drop these into any LLM coding assistant. Each section is self-contained.
 
 ## Skills (load on relevant tasks)
 
+### moodle-5-3-changes
+
+> Use when upgrading a plugin or theme to Moodle 5.3, targeting 5.3 (branch 503, MOODLE_503_STABLE), setting $plugin->requires for 5.3, or fixing 5.3 deprecations and breakages — user/lib.php functions moved to \core\user, legacy external_* classes and functions, FEATURE_GROUPMEMBERSONLY, Classic theme removal, Boost dark colour mode, React navigation and block_timeline, theme_boost/bootstrap/* imports, report builder sortable/set_main_table changes, duration element units, quiz report group selector, assign overrides and marker allocation, adhoc task ids, login/token.php hardening. Skip when working on 5.2 or earlier only, or for general plugin authoring (use moodle-plugin-development).
+
+# Moodle 5.3 Changes
+
+## Overview
+
+A developer digest of what changed in Moodle 5.3 and what plugin and theme
+authors must do about it. Breaking changes and deprecations come first, then
+new capabilities, then an upgrade checklist.
+
+**Status:** based on the Moodle **5.3beta (Build: 20260916)** `UPGRADING.md`
+and the MDL tracker issues it cites, checked against the 5.3beta source. It
+will be re-verified against 5.3.0 final. Where the notes and the beta code
+disagree, this skill follows the code and says so.
+
+See [reference.md](reference.md) for the full per-component catalogue — every
+5.3beta upgrade note, with actions, snippets and MDL links.
+
+## When to Use
+
+- Porting a plugin or theme to 5.3, or adding MOODLE_503_STABLE to CI
+- A 5.3 site shows debugging notices, `coding_exception`s or install failures
+  from plugin code
+- Choosing replacements for APIs deprecated in 5.3
+- Deciding whether a new 5.3 API (React components, colour modes, PATs, OAuth2
+  scopes) is usable given your supported versions
+- **Skip when:** the plugin only supports 5.2 or earlier, or the question is
+  general Moodle plugin structure (use `moodle-plugin-development`,
+  `moodle-upgrade-migration`)
+
+## Platform and requirements
+
+| Item | 5.3 value |
+|---|---|
+| `$branch` | `503` |
+| Beta version number | `2026091600.00` (`5.3beta (Build: 20260916)`) — re-check at 5.3.0 |
+| PHP | 8.3.0 minimum |
+| Databases | MariaDB 11.4, MySQL 8.4, PostgreSQL 17, SQL Server 15.0 (MariaDB was 10.11 and PostgreSQL 16 in 5.2) |
+| Upgrade from | Moodle 4.4 or later |
+| Composer | `composer install` was already required in 5.2; 5.3 adds `league/oauth2-server` (MDL-88457), and OAuth2 server admin pages check it via the new `\core\composer` status API (MDL-88576), so re-run `composer install` after upgrading |
+
+The database minimums come from `admin/environment.xml`, not UPGRADING.md.
+At the time of the beta the moodledev.io 5.3 release page listed older values
+(PostgreSQL 16, MariaDB 10.11, upgrade from 4.5); treat `environment.xml` as
+authoritative and re-check at release.
+
+For CI: drop MariaDB < 11.4 and PostgreSQL < 17 from MOODLE_503 jobs.
+
+## Breaking changes and removals
+
+Code that will fail, throw, or visibly break on 5.3:
+
+| Area | Change | Action |
+|---|---|---|
+| core (MDL-83231) | `plugin_supports(..., FEATURE_GROUPMEMBERSONLY)` always throws `coding_exception`; installing/upgrading a module whose `<mod>_supports('groupmembersonly')` returns true throws `plugin_defective_exception` | Delete the `case FEATURE_GROUPMEMBERSONLY:` |
+| core_external (MDL-81225, MDL-76583) | `external_generate_token()`, `external_create_service_token()`, `external_delete_descriptions()`, `external_validate_format()`, `external_format_string()`, `external_format_text()`, `external_generate_token_for_current_user()`, `external_log_token_request()` are final-deprecated stubs and throw | Use `\core_external\util::` methods |
+| core_external | Global `\external_api`, `\external_value`, `\external_single_structure` etc. are no longer `class_alias`es in `lib/externallib.php`; they resolve via the renamed-classes map | `use core_external\external_api;` etc.; drop `require_once($CFG->libdir . '/externallib.php')` |
+| login/token.php (MDL-87010) | Credentials in the query string throw; `appsitecheck` parameter removed; service is validated before authentication | POST credentials; don't probe with `appsitecheck=1` |
+| core_form (MDL-89434) | `duration` element with `units` throws if the effective `defaultunit` (default `MINSECS`) is not in `units` | Set `defaultunit` to one of your `units` |
+| core_reportbuilder (MDL-87404) | Columns are sortable by default | Add `->set_is_sortable(false)` where sorting must stay off |
+| core_reportbuilder (MDL-88397) | `set_main_table($table, $alias)` — alias has no default | Always pass an alias |
+| core_ai (MDL-89123) | `prompttokens`/`completiontoken(s)` moved from `ai_action_*` child tables to `ai_action_register` | Update direct SQL |
+| mod_quiz (MDL-81096) | Group selector no longer printed for custom quiz reports | Call `$this->print_action_bar(...)` (see below) |
+| mod_assign (MDL-87709) | `marker_updated` event no longer triggered by core | Observe `marker_added` / `marker_removed` |
+| core_courseformat (MDL-88410) | Collapse/expand-all toggle moved from `content\section` output + template to `content` | Move overrides to `local/content.mustache` |
+| core_courseformat (MDL-88949) | Course index subsection ARIA moved to the activity `treeitem` | Update both `courseindex/cm` and `courseindex/section` overrides |
+| block_timeline (MDL-88287) | Rewritten in ESM + React; `output\main`, `output\renderer`, AMD modules and templates removed without stubs | Drop overrides of the old renderer/templates |
+| theme (MDL-88351) | Classic theme removed from core and uninstalled on upgrade; customised settings are migrated to Boost only if Classic was the site default theme | Re-parent Classic child themes or install Classic separately *before* upgrading |
+| theme_boost (MDL-89050) | `drawer` template block `{{$drawerheadercontent}}` replaced by `{{$drawercontrols}}` | Rename the block in overriding templates |
+| Navigation (MDL-87830, MDL-89294) | Primary and secondary nav rendered by React `core/nav/Nav` / `PrimaryNav`: `.mds-nav-pill` instead of `.nav-link`, no `.moremenu`; Boost navbar includes `core/primarymoremenu` | Retarget CSS/JS/Behat selectors; child navbars switch to `core/primarymoremenu` |
+| Modals (MDL-75699) | `core/modal` title is `<h2 class="modal-title fs-5">`, was `<h5>` | Body headings start at `<h3>`; fix selectors on `h5.modal-title` |
+| core_grades (MDL-89497, MDL-88407) | Courses with penalty-deducted grades are frozen on upgrade until a grade manager keeps or applies the fix | Warn admins; penalty-applying plugins re-test grading |
+| tool_task (MDL-86422) | `queue_adhoc_task($task, true)` returns the existing task's id instead of `false` for a duplicate | Don't use truthiness to mean "newly queued" |
+| Exporters (MDL-79755, also 5.2.2+) | Formatted exporter strings use numeric entities (`&#38;` not `&amp;`) | Update test assertions and JS comparisons |
+| Block uninstall (MDL-89289) | Instances deleted later by an ad-hoc task | Put per-instance cleanup in `instance_delete()`; don't assume contexts are gone |
+| Linear navigation (MDL-89406) | Formats returning true from `uses_linear_navigation()` get the prev/next footer **on by default** unless they add a `format_<name>/enablelinearnav` admin setting | Add the setting if you need an off switch |
+
+Quiz report minimal fix:
+
+```php
+// In your quiz report's display() — mod_quiz\local\reports\report_base subclass.
+$this->print_action_bar('myreport', null, $cm, $reporturl);
+```
+
+`duration` element fix:
+
+```php
+$mform->addElement('duration', 'timelimit', get_string('timelimit', 'quiz'),
+    ['units' => [HOURSECS, DAYSECS], 'defaultunit' => HOURSECS]);
+```
+
+## Deprecations (with replacements)
+
+Still working in 5.3 but emitting notices (or scheduled for removal):
+
+| Deprecated | Replacement | MDL |
+|---|---|---|
+| 25 `user/lib.php` functions (`user_create_user()`, `user_update_user()`, `user_delete_user()`, `user_get_user_details()`, `user_can_view_profile()` …) | `\core\user::create_user()` etc. (name without `user_` prefix); `user_update_device_public_key()` → `\core_user\devicekey::update_device_public_key()` | MDL-82650 |
+| `theme_boost/bootstrap/*` AMD imports | `import {Tooltip} from 'bootstrap';` (5.3+) or `from 'theme_boost/index'` (5.2-compatible, until 7.0) | MDL-88766 |
+| `core_courseformat\base::get_return_section()` | `get_page_section()` | MDL-86284 |
+| `get_view_url()` option `'sr'` | `'pagesectionid' => $section->id` (docblock-only, no notice) | MDL-86284 |
+| report builder `get_main_table()` | `get_main_table_sql()` (includes `{braces}`) | MDL-88397 |
+| `extend_user_menu::add_navitem()` / `get_navitems()` | `add_menu_item(\core_user\output\user_action_menu\link ...)` / `get_menu_items()` | MDL-88938 |
+| `grade_item::update_deducted_mark()` | none — `\core_grades\penalty_manager` applies penalties | MDL-88407 |
+| `\core\hub\registration::get_dataroot_size()` | `get_filepool_usage()` | MDL-88805 |
+| `core/external_content_banner` template | `core_admin/notification_ctas` | MDL-89290 |
+| `core_admin_renderer::admin_notifications_page()` | `notifications_page()` (three banner args removed) | MDL-89290 |
+| `core_admin_renderer` `campaign_content()`, `services_and_support_content()`, `userfeedback_encouragement()`, `marketplace_integration_notice()` | customise `core_admin/notification_ctas` | MDL-89290 |
+| `core_admin_renderer::upgradekey_form_page()` | `upgradekey_form_page_with_validation($url, false)` | MDL-87896 |
+| `$CFG->showcampaigncontent` | no effect; hide cards with `$CFG->disablenotificationctas` | MDL-89290 |
+| `assign::delete_override()`, `assign::delete_all_overrides()`; global `move_group_override()`, `reorder_group_overrides()` (removal in 6.0, MDL-87324) | `\mod_assign\override_manager` (`delete_overrides_by_id()`, …) | MDL-86513 |
+| `assign::get_allocated_markers()` / `update_allocated_markers()` | `get_marker_allocations()` / `update_marker_allocations()` (different 2nd arg) | MDL-87709 |
+| `ASSIGN_MULTIMARKING_MAX_MARKERS` | `ASSIGN_MULTIMARKING_DEFAULT_MAX_MARKERS` | MDL-87709 |
+| `enrol_manual_plugin::enrol_cohort()` | none (use enrol_cohort) | MDL-89439 |
+| `\core\task\manager::task_is_scheduled()` | `get_queued_adhoc_task_record($task, false)` | MDL-86422 |
+| Old grade action bar templates | `core/navigation_action_bar`, `core/action_bar` | MDL-81096 |
+| Behat `I set portfolio instance "X" to "Y"` | `I set the portfolio instance "X" to "Y"` | MDL-89069 |
+| `NO_MOODLE_COOKIES` checks | `\core\session\manager::supports_cookies()` | MDL-87174 |
+
+Renamed without notices (old names keep working): ~110 adminlib classes moved
+to `\core_admin\setting\...` (MDL-81935), e.g. `admin_setting_configtext` →
+`\core_admin\setting\setting\configtext`. Keep the old names while you
+support 5.2.
+
+A version-spanning replacement:
+
+```php
+// Moodle 5.3+ only.
+$userid = \core\user::create_user((object) $data);
+// Supporting 5.2 too: keep user_create_user() (with require_once of
+// user/lib.php) until your minimum is 5.3; it still works, with a notice.
+```
+
+## New capabilities by area
+
+| Area | What's new | MDL |
+|---|---|---|
+| Theming | Boost dark colour mode (experimental `theme_boost/enablecolourmodes`), `data-bs-theme` on `<html>`, `theme_boost\colour_mode`; TinyMCE follows the mode | MDL-68037 |
+| Theming | Self-hosted Noto Sans default font (+ cyrillic, Noto Sans JP for `:lang(ja)`); inline navbar search | MDL-88412, MDL-89024 |
+| React | `html_writer::react_component()`, `react_component_renderable`, AMD `core/import` and `core/component`, `scripts/swizzle.mjs` | MDL-89296, MDL-88505, MDL-88509 |
+| Output | `$PAGE->set_show_navigation_footer()`, `set_has_sticky_footer()`, `set_supplementary_content()`; `core\output\submenu`; `subpanel` URL; `notification_base` `headinglevel` | MDL-87575, MDL-87302, MDL-88601, MDL-88312, MDL-88458 |
+| Hooks | `\core\hook\email\before_email_to_user` — edit, add headers, or block outgoing mail | MDL-69724 |
+| DI | `#[\DI\Attribute\Inject]` properties; `\core\authentication`, `\core\authentication\password`, `\core_auth\validate_user`, `\core\composer` services | MDL-89528, MDL-88580, MDL-88576 |
+| REST API | Personal access tokens (`\core\api\token_manager`, `moodle/api:createtoken`), OAuth2 server clients, route scopes `#[scopeset]` / `#[unscoped_resource]` | MDL-87706, MDL-89181, MDL-89089 |
+| Web services | `'allowcorsrequests' => true` for no-login AJAX functions; `mod_assign_*_overrides`, `mod_forum_set_read_state`, `mod_quiz_get_users_in_report` | MDL-87150, MDL-86513, MDL-87887, MDL-81096 |
+| Exceptions | `new moodle_exception(..., previous: $e)` | MDL-88579 |
+| Tasks | `adhoc_task::set_soft_retry_delay()` (also 5.2.2+); `set_scheduled_task_nextruntime()` returns bool | MDL-79763, MDL-89200 |
+| Course formats | `uses_linear_navigation()`, `inline_help` option key, disabled activity chooser items | MDL-87302, MDL-88669, MDL-87373 |
+| Report builder | `week`/`month`/`year` aggregations, `set_main_table_sql()`, auto `prepend_joins`, `add_fields(array)` | MDL-84635, MDL-88397, MDL-87405, MDL-89004 |
+| Accessibility | `core/imagedetails/modal` `getImageDetails(file)`; Behat `I set the focus on`, `--colourmode=dark` runs | MDL-89214, MDL-84065, MDL-68037 |
+| Testing | PHPUnit `util.php --snapshot`, `--restore=NAME`, `--upgrade` | MDL-88495 |
+| Grades | Scale-less outcomes linked to course modules | MDL-88881 |
+
+Dark-mode-safe plugin CSS:
+
+```css
+.local_myplugin-status {
+    background-color: var(--bs-tertiary-bg);
+    color: var(--bs-body-color);
+    border: 1px solid var(--bs-border-color);
+}
+[data-bs-theme="dark"] .local_myplugin-status {
+    /* only genuine per-mode differences here */
+}
+```
+
+Email hook listener (`db/hooks.php`):
+
+```php
+$callbacks = [
+    [
+        'hook' => \core\hook\email\before_email_to_user::class,
+        'callback' => [\local_myplugin\hook_listener::class, 'before_email'],
+    ],
+];
+```
+
+```php
+public static function before_email(\core\hook\email\before_email_to_user $hook): void {
+    if (str_ends_with($hook->email->user->email, '@example.invalid')) {
+        $hook->email->add_block_reason('Recipient domain is blocked');
+    }
+}
+```
+
+## Upgrade checklist
+
+1. Grep for `FEATURE_GROUPMEMBERSONLY` — remove it.
+2. Grep for `external_generate_token`, `external_format_`, `external_validate_format`, `external_delete_descriptions`, `external_log_token_request` — replace with `\core_external\util::`.
+3. Grep for bare `external_api`, `external_value`, `external_single_structure`, `external_multiple_structure`, `external_function_parameters` — switch to `use core_external\...`.
+4. Grep for the 25 `user/lib.php` functions — migrate or plan to when your minimum is 5.3.
+5. Grep `'duration'` form elements with `'units'` — check `defaultunit`.
+6. Report builder: pass an alias to `set_main_table()`; audit sortability; replace `get_main_table()`.
+7. Quiz report subplugins: call `print_action_bar()`; implement `has_permission()`.
+8. Grep AMD `src/` for `theme_boost/bootstrap/`; rebuild with grunt.
+9. Themes: remove Classic parentage; check `drawerheadercontent`, `.nav-link`/`.moremenu`, `h5.modal-title`, `core/loginform`, courseindex and `local/content` overrides.
+10. Styles: replace `bg-white`, `text-dark`, literal colours with `--bs-*` variables; run Behat once with `--colourmode=dark`.
+11. Event observers on `mod_assign\event\marker_updated` → `marker_added` / `marker_removed`.
+12. Callers of `queue_adhoc_task($task, true)` that test the return value.
+13. Course formats using linear navigation: add `format_<name>/enablelinearnav` if needed.
+14. CI: add MOODLE_503_STABLE with PHP 8.3+, PostgreSQL 17 / MariaDB 11.4.
+15. qbank plugins with bulk actions: override `get_action_icon()` (base returns `i/empty`) — MDL-73051.
+16. Run with `DEBUG_DEVELOPER` and fix every deprecation notice from your component.
+
+## Common mistakes
+
+| Mistake | Fix |
+|---|---|
+| Replacing `user_create_user($arr)` with `\core\user::create_user($arr)` | New methods are typed: cast with `(object) $arr` |
+| Setting `$plugin->requires` to 5.3 just to use `\core\user::` or `bootstrap` imports while claiming 5.2 support | Keep old calls (or `theme_boost/index`) until the minimum really is 5.3 |
+| Treating `set_columnheadersattributes()`, `add_header_attributes()`, soft retry delay as 5.3-only | They are also in 5.2.x: soft retry delay from 5.2.2, `set_columnheadersattributes()`/`add_header_attributes()` from 5.2.3 |
+| Using `\core\router\attributes\route` from the notes | The attribute class is `\core\router\route` (`cookies:` option) |
+| Calling `\core\authentication::get_plugin()` statically | Instance methods: `\core\di::get(\core\authentication::class)->get_plugin($auth)` |
+| `json_encode()`-ing props for `html_writer::react_component()` | Pass the array/object; the method encodes it |
+| Assuming `ai_action_register.courseid` is always a course | `0` = not yet backfilled, `-1` = context not in a course |
+| Assuming routes without `#[scopeset]` are rejected | Runtime applies no scope restriction; declare scopes explicitly |
+| Adding `'allowcorsrequests' => true` broadly | Only for `loginrequired => false` functions safe cross-origin |
+| Looking for `override_manager::delete_override()` | The method is `delete_overrides_by_id()` |
+| Hard-coding `fill` in SVGs shown via `<img>` | Use the pix/icon API so icons inherit `currentColor` in dark mode |
+
+## References
+
+- https://moodledev.io/docs/5.3/devupdate
+- https://moodledev.io/general/releases/5.3
+- Root `UPGRADING.md` in the Moodle 5.3 codebase (section `## 5.3beta`)
+- https://tracker.moodle.org/browse/MDL-82650 (user/lib.php → `\core\user`)
+- https://tracker.moodle.org/browse/MDL-81225 (legacy external classes)
+- https://tracker.moodle.org/browse/MDL-68037 (colour modes)
+- https://tracker.moodle.org/browse/MDL-88351 (Classic removal)
+- https://tracker.moodle.org/browse/MDL-88766 (Bootstrap imports)
+- https://tracker.moodle.org/browse/MDL-86887 (5.3 environment requirements)
+- [reference.md](reference.md) — full per-component catalogue
+
+
+---
+
 ### moodle-accessibility
 
 > Use when ensuring Moodle plugin UI meets WCAG 2.1 AA — semantic HTML in Mustache, ARIA via core helpers, keyboard navigation, color contrast in SCSS, focus management in modals, screen reader testing, and Pa11y/axe automation.
@@ -262,6 +500,16 @@ moodle.org reviewers run a11y checks. Common rejection reasons:
 - Custom widgets without ARIA / keyboard
 - Missing `<label>` on form fields
 
+## Moodle 5.3 notes (beta — re-verify at 5.3.0)
+
+- Modal title is now `<h2 class="modal-title fs-5">`; start modal body headings at `<h3>` ([MDL-75699](https://tracker.moodle.org/browse/MDL-75699)).
+- Experimental dark mode: no literal colours, `bg-white` or `text-dark`; use `--bs-*`/`--mds-*` tokens or `bg-body*`/`text-body*` utilities, and icons via the pix API so they inherit `currentColor` ([MDL-68037](https://tracker.moodle.org/browse/MDL-68037)).
+- `core/notification_base` accepts `headinglevel` (1-6) ([MDL-88458](https://tracker.moodle.org/browse/MDL-88458)); override `{{$searchrole}}{{/searchrole}}` in `core/search_input_auto` to drop a nested search landmark ([MDL-88833](https://tracker.moodle.org/browse/MDL-88833)).
+- Course-index subsection ARIA (`aria-owns`/`aria-expanded`) moved to the delegating activity's treeitem; overrides of `courseindex/cm` and `courseindex/section` must change together ([MDL-88949](https://tracker.moodle.org/browse/MDL-88949)).
+- Behat: `I set the focus on the "<element>" "<selector>"` (@javascript only) ([MDL-84065](https://tracker.moodle.org/browse/MDL-84065)); `--colourmode=dark` runs a suite in dark mode ([MDL-68037](https://tracker.moodle.org/browse/MDL-68037)).
+- `core/imagedetails/modal` `getImageDetails(file)` collects alt text / decorative flag for your own image-upload UI ([MDL-89214](https://tracker.moodle.org/browse/MDL-89214)); `flexible_table::set_columnheadersattributes()` (also 5.2.3+) ([MDL-89384](https://tracker.moodle.org/browse/MDL-89384)).
+- Full 5.3 catalogue: `moodle-5-3-changes`.
+
 ## References
 
 - Accessibility: https://moodledev.io/general/development/policies/accessibility
@@ -269,6 +517,7 @@ moodle.org reviewers run a11y checks. Common rejection reasons:
 - WAI-ARIA APG: https://www.w3.org/WAI/ARIA/apg/
 - Boost a11y: https://docs.moodle.org/dev/Boost_-_Accessibility
 - pix renderer: https://moodledev.io/docs/apis/subsystems/output#pix-icons
+- See also: `moodle-field-lessons` (generalized field lessons for this area)
 
 
 ---
@@ -515,6 +764,16 @@ Moodle's AMD has limited unit-test infrastructure. Options:
 - **Behat with `@javascript`** — full browser testing
 - **Jest** (Moodle 4.4+) — `npx grunt jest` runs `tests/jest/*.test.js` if present
 
+## Moodle 5.3 notes (beta — re-verify at 5.3.0)
+
+- Do not import `theme_boost/bootstrap/*`: use `import {Tooltip} from 'bootstrap'` (5.3+) or `'theme_boost/index'` for multi-version plugins, then rebuild; exception: `util`/`dom` helpers still load directly (`bootstrap/dom/event-handler` on 5.3+, `theme_boost/bootstrap/dom/event-handler` on ≤5.2) ([MDL-88766](https://tracker.moodle.org/browse/MDL-88766)).
+- Modal title is `<h2 class="modal-title fs-5">` (selectors on `h5.modal-title` break) ([MDL-75699](https://tracker.moodle.org/browse/MDL-75699)); nav items are React `.mds-nav-pill`, not `.nav-link`/`.moremenu` ([MDL-87830](https://tracker.moodle.org/browse/MDL-87830), [MDL-89294](https://tracker.moodle.org/browse/MDL-89294)).
+- React mounting: `core/import` (native dynamic `import()` for `@moodle/lms/...` specifiers) and `core/component` `appendToDom()`/`prependToDom()` ([MDL-88505](https://tracker.moodle.org/browse/MDL-88505)); PHP side `\core\output\html_writer::react_component($module, $props)`, do not pre-`json_encode` props ([MDL-89296](https://tracker.moodle.org/browse/MDL-89296)).
+- block_timeline is now ESM/React; its AMD modules and templates are gone ([MDL-88287](https://tracker.moodle.org/browse/MDL-88287)).
+- `core/imagedetails/modal` `getImageDetails(file)` resolves `{alt, presentation, width, height}` or `null` ([MDL-89214](https://tracker.moodle.org/browse/MDL-89214)).
+- TinyMCE picks its skin from `data-bs-theme` at setup; plugin dialogs/content CSS should use theme colour tokens ([MDL-68037](https://tracker.moodle.org/browse/MDL-68037)).
+- Full 5.3 catalogue: `moodle-5-3-changes`.
+
 ## References
 
 - JavaScript modules: https://moodledev.io/docs/apis/subsystems/javascript-modules
@@ -523,6 +782,7 @@ Moodle's AMD has limited unit-test infrastructure. Options:
 - core/ajax: https://moodledev.io/docs/apis/subsystems/external/writing-a-service#calling-from-javascript
 - Modal: https://moodledev.io/docs/apis/subsystems/output/modal
 - Coding style: https://moodledev.io/general/development/policies/codingstyle/javascript
+- See also: `moodle-field-lessons` (generalized field lessons for this area)
 
 
 ---
@@ -762,12 +1022,740 @@ And I should see "this will fail"     # forces a wait you can attach to
       --tags @local_example --format=progress
 ```
 
+## Moodle 5.3 notes (beta — re-verify at 5.3.0)
+
+- Selectors: modal title `h5.modal-title` → `h2.modal-title` ([MDL-75699](https://tracker.moodle.org/browse/MDL-75699)); nav items are `.mds-nav-pill` (selected `.mds-nav-pill--selected`), not `.nav-link.active` ([MDL-87830](https://tracker.moodle.org/browse/MDL-87830), [MDL-89294](https://tracker.moodle.org/browse/MDL-89294)); navbar search is an inline field; the `togglesearch` button is only shown on small screens, so click it only if visible (see `behat_search.php`) ([MDL-87834](https://tracker.moodle.org/browse/MDL-87834), [MDL-89010](https://tracker.moodle.org/browse/MDL-89010)).
+- Exporter/web-service strings use numeric entities (`&#38;` not `&amp;`), also 5.2.2+ ([MDL-79755](https://tracker.moodle.org/browse/MDL-79755)).
+- New step `I set the focus on the "<element>" "<selector>"` (@javascript only) ([MDL-84065](https://tracker.moodle.org/browse/MDL-84065)).
+- `--colourmode=dark` on `admin/tool/behat/cli/init.php`/`util.php`; scenarios assuming colour modes are off add `Given the run is not using a colour mode` ([MDL-68037](https://tracker.moodle.org/browse/MDL-68037)).
+- Steps `the course linear navigation should (not) be visible` ([MDL-87575](https://tracker.moodle.org/browse/MDL-87575)); linear nav is on by default for opted-in formats ([MDL-89406](https://tracker.moodle.org/browse/MDL-89406)).
+- `I set portfolio instance "X" to "Y"` deprecated → `I set the portfolio instance "X" to "Y"` ([MDL-89069](https://tracker.moodle.org/browse/MDL-89069)).
+- Full 5.3 catalogue: `moodle-5-3-changes`.
+
 ## References
 
 - Behat in Moodle: https://moodledev.io/general/development/tools/behat
 - Writing tests: https://moodledev.io/general/development/tools/behat/writing
 - Step reference: https://moodledev.io/general/development/tools/behat/writing#step-definitions
 - Data generators: https://moodledev.io/docs/apis/subsystems/testing/generators#behat
+- See also: `moodle-field-lessons` (generalized field lessons for this area)
+
+
+---
+
+### moodle-ci-matrix
+
+> Use when adding or updating a GitHub Actions workflow that runs moodle-plugin-ci for a Moodle plugin, or when choosing its Moodle branch x PHP x database matrix. Covers starting from the upstream gha.dist.yml template, checking each branch's PHP and database requirements in environment.xml and core's own CI, service image pins, include/exclude matrix pitfalls, non-blocking rows for Moodle main, and making the plugin pass the checks on its first run. Skip when the task is about running PHPUnit or Behat locally with no CI workflow involved.
+
+# Moodle plugin CI matrix (moodle-plugin-ci on GitHub Actions)
+
+## Overview
+
+`moodlehq/moodle-plugin-ci` runs Moodle's plugin checks (phplint, phpcs, phpdoc, validate, savepoints, mustache, grunt, PHPUnit, Behat) against a real Moodle checkout. It is usually run from GitHub Actions. The workflow itself is short. Most breakage comes from the matrix: a Moodle branch paired with a PHP or database version that branch does not support. Matrices built by pairing the Moodle versions you want with PHP and DB versions that look current keep producing pairs like Moodle 5.0 + PHP 8.1 or Moodle 5.2 + PostgreSQL 13. **Verify every combination against a source. Do not assume any of them.**
+
+## When to Use
+
+- Adding `.github/workflows/ci.yml` (or `moodle-ci.yml`) to a plugin repo
+- Adding or dropping a Moodle branch, PHP version or database in an existing matrix
+- CI fails at "Initialize containers", at `moodle-plugin-ci install`, or with an environment check error such as "PHP version must be at least ..."
+- Adding a non-blocking row for Moodle `main` (the next release, still in development)
+- **Skip when:** you are only running PHPUnit/Behat locally (see `moodle-phpunit-testing` / `moodle-behat-testing`), or the repo uses a different CI system
+
+## 1. Start from the upstream template
+
+Do not write the workflow from memory, and do not copy an older sibling repo's workflow. Fetch the current template:
+
+```
+https://raw.githubusercontent.com/moodlehq/moodle-plugin-ci/main/gha.dist.yml
+```
+
+Keep its job structure and check steps. Change only the matrix, service images, plugin path and triggers. The template installs the tool with `composer create-project ... moodlehq/moodle-plugin-ci ci ^4`, which is moodle-plugin-ci 4.x. Check the moodle-plugin-ci docs if you pin a different major.
+
+## 2. Decide the Moodle branches
+
+- Test the branches the plugin claims to support: `$plugin->requires` and `$plugin->supported` in `version.php`, or the branches the user names. If the user asks for a narrower matrix, a wider `supported` range can stay in `version.php`, but say which branches CI covers.
+- A plugin that depends on another plugin needs `moodle-plugin-ci add-plugin owner/repo` (optionally `--branch X`) **before** `install`.
+
+## 3. Verify PHP and DB per branch
+
+For **each** branch, get the requirements from the branch itself:
+
+1. **Minimum PHP and database versions**: that branch's `environment.xml`. The file moved in Moodle 5.1 when the web root became `public/`:
+   - 5.1 and later: `public/admin/environment.xml`
+   - 5.0 and earlier: `admin/environment.xml`
+
+   ```bash
+   git clone --bare --filter=blob:none https://github.com/moodle/moodle.git moodle.git
+   git --git-dir moodle.git show MOODLE_502_STABLE:public/admin/environment.xml \
+     | awk '/<MOODLE version="5.2"/{s=1} s && /VENDOR name="(mariadb|mysql|postgres)"|PHP version=/{print} /<\/MOODLE>/{s=0}'
+   ```
+
+   **Gotcha:** the file holds one `<MOODLE version="X.Y">` block for every release, including newer ones used for upgrade checks. Read the block whose version matches the branch, not the last block in the file.
+2. **Maximum PHP**: this is not in `environment.xml`. Read core's own `.github/workflows/push.yml` on the same branch. Its comments mark the "lowest PHP supported" (MySQL job) and "highest PHP supported" (PostgreSQL job). Cross-check with the moodledev.io PHP page.
+3. If you cannot verify a combination, leave it out and say so. A smaller verified matrix is better than a broken one. Never infer one branch's requirements from the branches next to it.
+
+### Reference values
+
+These were read from `environment.xml` and core `push.yml` on each branch in September 2026. They go out of date, so recheck them against the sources above before relying on them.
+
+| Branch | PHP (min – max) | MariaDB min | PostgreSQL min | MySQL min |
+|---|---|---|---|---|
+| `MOODLE_405_STABLE` (4.5) | 8.1 – 8.3 | 10.6.7 | 13 | 8.0 |
+| `MOODLE_500_STABLE` (5.0) | 8.2 – 8.4 | 10.11.0 | 14 | 8.4 |
+| `MOODLE_501_STABLE` (5.1) | 8.2 – 8.4 | 10.11.0 | 15 | 8.4 |
+| `MOODLE_502_STABLE` (5.2) | 8.3 – 8.4 | 10.11.0 | 16 | 8.4 |
+| `main` (5.3 **beta**, moving target) | 8.3 – 8.4 | 11.4.0 | 17 | 8.4 |
+
+The 5.3 row comes from the `<MOODLE version="5.3">` block of `main` at the `5.3beta` release commit. A beta's requirements can still change before the stable release. Recheck them when `MOODLE_503_STABLE` is branched. After that, `main` becomes the next development version.
+
+### Pairs that must never appear
+
+- PHP 8.4 with 4.5 (4.5's highest supported PHP is 8.3)
+- PHP 8.1 with 5.0 or later; PHP 8.2 with 5.2 or later
+- PostgreSQL below 17, or MariaDB below 11.4, with 5.3/`main`
+
+## 4. Build the matrix only from verified pairs
+
+**One branch.** Use a plain cross product with the branch's lowest and highest PHP, and alternate the databases:
+
+```yaml
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {moodle-branch: MOODLE_502_STABLE, php: '8.3', database: pgsql}
+          - {moodle-branch: MOODLE_502_STABLE, php: '8.4', database: mariadb}
+```
+
+**Several branches with different PHP ranges.** Use an object axis, so each branch keeps its own PHP list and is still crossed with every database:
+
+```yaml
+      matrix:
+        moodle:
+          - {branch: MOODLE_405_STABLE, php: '8.1'}
+          - {branch: MOODLE_405_STABLE, php: '8.3'}
+          - {branch: MOODLE_502_STABLE, php: '8.3'}
+          - {branch: MOODLE_502_STABLE, php: '8.4'}
+        database: [pgsql, mariadb]
+```
+
+Then read `matrix.moodle.branch` and `matrix.moodle.php` in `setup-php` and in the `install` step's env. If you cross flat `php:` and `moodle-branch:` axes instead, prune with `exclude:` and give each entry a comment:
+
+```yaml
+        exclude:
+          - {moodle-branch: MOODLE_405_STABLE, php: '8.4'}  # 4.5 max PHP is 8.3 (core push.yml)
+```
+
+**`include:` trap.** GitHub first tries to merge an `include` entry into existing combinations. If it cannot merge without overwriting an original value, it adds the entry as a **new job with only the keys it lists**. For example, `{moodle-branch: X, php: Y}` added to a matrix that also has `database` becomes a job with an empty `DB`, and `install` then fails. Expand the matrix before you push. Parse the YAML and apply GitHub's documented rules with a short script. With no original axes, every `include` entry is its own job.
+
+## 5. Service images
+
+- Pin each database to the **lowest** version that satisfies **every** branch in the matrix. An image that is too new hides breakage at the minimum version, and one that is too old fails the newest branch. For example, 4.5–5.2 together need `postgres:16` and `mariadb:10.11`.
+- The upstream template's floating `postgres:17` / `mariadb:11` images are newer than the minimum for 5.2 and earlier. Pin them explicitly.
+- **Health check:** MariaDB 11.x images do not ship `mysqladmin`, so `--health-cmd="mysqladmin ping"` never reports healthy and the job dies at "Initialize containers". Use the template's `healthcheck.sh --connect --innodb_initialized`, or `mariadb-admin ping`.
+- To give different rows different images (for example a `main` row that needs PostgreSQL 17), make the image a matrix value with a default:
+
+```yaml
+      postgres:
+        image: ${{ matrix.database == 'pgsql' && (matrix.pgsql-image || 'postgres:16') || '' }}
+```
+
+## 6. Non-blocking row for `main`
+
+Add the next Moodle release as an `include:` row that cannot fail the build:
+
+```yaml
+jobs:
+  test:
+    continue-on-error: ${{ matrix.experimental == true }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {moodle-branch: MOODLE_502_STABLE, php: '8.3', database: pgsql}
+          - {moodle-branch: MOODLE_502_STABLE, php: '8.4', database: mariadb}
+          - {moodle-branch: main, php: '8.4', database: pgsql, pgsql-image: 'postgres:17', experimental: true}
+```
+
+- Keep any "committed amd/build is stale" check off `main`. The bundles are built with the stable branch's toolchain, and `main`'s grunt output can differ.
+- **Artifact names:** the template's `Behat Faildump (${{ join(matrix.*, ', ') }})` joins every matrix value, so an image override like `postgres:17` puts a `:` in the artifact name, which `actions/upload-artifact` rejects. List the fields yourself: `Behat Faildump (${{ matrix.moodle-branch }}, PHP ${{ matrix.php }}, ${{ matrix.database }})`.
+- Before changing any matrix key, grep the workflow for every `matrix.` consumer.
+
+## 7. Propose the matrix before writing it
+
+Show the user a table (branch x PHP x DB) with one line on how each axis was checked. Then write the file. A workflow on the default branch runs on every push, so a wrong matrix is visible right away.
+
+## 8. Make the plugin pass on the first run
+
+CI that fails on its first run teaches everyone to ignore it. Before you finish, run each step locally the same way the workflow runs it:
+
+```bash
+composer create-project -n --no-dev --prefer-dist moodlehq/moodle-plugin-ci ci ^4
+ci/bin/moodle-plugin-ci install --plugin ./local_myplugin --db-host=127.0.0.1 --db-type=pgsql --branch=MOODLE_502_STABLE
+ci/bin/moodle-plugin-ci phplint
+ci/bin/moodle-plugin-ci phpcs --max-warnings 0
+ci/bin/moodle-plugin-ci phpdoc --max-warnings 0
+ci/bin/moodle-plugin-ci validate
+ci/bin/moodle-plugin-ci savepoints
+ci/bin/moodle-plugin-ci mustache
+ci/bin/moodle-plugin-ci grunt --max-lint-warnings 0
+ci/bin/moodle-plugin-ci phpunit --fail-on-warning
+```
+
+- Every step must exit 0. `--max-warnings` is valid only on `phpcs` and `phpdoc`.
+- **Run the pipeline as written.** Swapping in a flag that looks equivalent tests a different pipeline. For example, an explicit `install --extra-plugins <dir>` in place of the workflow's `add-plugin` step overrides the path that `add-plugin` already wrote to moodle-plugin-ci's `.env` (`EXTRA_PLUGINS_DIR`), and it can fail on the runner with `Failed to run realpath(...)`. Keep `add-plugin`, and don't add `--extra-plugins`.
+- After a local `install`, check `MOODLE_DIR` in `ci/.env`. A failed install leaves it pointing at the previous tree, and later steps then silently test the wrong code.
+- Two failures that keep coming back: every Mustache template in `templates/` needs an `Example context (json):` block in its docblock, and lang strings must be sorted by key.
+- If the workflow checks `amd/build`, rebuild it with the Node version and grunt of the branch that step runs on.
+
+## Common mistakes
+
+| Mistake | Consequence | Fix |
+|---|---|---|
+| Crossing all requested branches with "current" PHP | Unsupported pair, install fails the environment check | Check each branch's `environment.xml` and core `push.yml` |
+| Reading the last `<MOODLE>` block in `environment.xml` | Picks up a newer release's minimums | Select `version="X.Y"` for the branch |
+| Looking for `admin/environment.xml` on 5.1+ | File not found | 5.1+ uses `public/admin/environment.xml` |
+| `include` entry missing the `database` key | Extra job with empty `DB` | Use an object axis, or list every key |
+| `mysqladmin ping` health check on MariaDB 11 | Containers never become healthy | `healthcheck.sh --connect --innodb_initialized` |
+| Using floating DB images (`postgres:17`, `mariadb:11`) for older branches | Hides breakage at the minimum version | Pin the lowest version every branch in the matrix supports |
+| `join(matrix.*)` in the artifact name with image values in the matrix | upload-artifact rejects the name | Name the fields explicitly |
+| `main` row without `continue-on-error` | Upstream churn breaks the build | `experimental: true` plus job-level `continue-on-error` |
+| Replacing `add-plugin` with `--extra-plugins` | Install fails at `realpath` on the runner | Keep the upstream step order |
+
+## References
+
+- https://moodledev.io/general/development/tools/phpunit (PHPUnit in plugins)
+- https://moodledev.io/general/releases (release dates and per-version requirements)
+- https://moodledev.io/general/development/policies/php (PHP version support policy)
+- https://moodlehq.github.io/moodle-plugin-ci/ (moodle-plugin-ci documentation)
+- https://github.com/moodlehq/moodle-plugin-ci/blob/main/gha.dist.yml (upstream GitHub Actions template)
+- https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/running-variations-of-jobs-in-a-workflow (matrix `include`/`exclude` rules)
+
+
+---
+
+### moodle-definition-of-done
+
+> Use when about to report a Moodle plugin task complete, open a pull request, or hand work over for review. A definition-of-done checklist covering code style and phpdoc gates (moodle-plugin-ci, phpcs, moodlecheck), PHPUnit and Behat, course lifecycle handling (backup, restore, reset, uninstall), privacy provider coverage, upgrade path, lang strings, release-notes consistency, proving each gate is non-vacuous, and verifying the effect rather than the exit code. Skip when exploring or prototyping with no intent to ship yet.
+
+# Moodle Definition of Done
+
+## Overview
+
+A checklist to walk before claiming any Moodle plugin change is finished. Every
+item is reported as **pass**, **fail**, or **not applicable, because ...**.
+Evidence comes before assertions: run the command, read its output, and state
+what you saw. A gate you did not run is not a pass.
+
+## When to Use
+
+- Before saying "done" on a plugin feature, fix, or refactor
+- Before opening a pull request or requesting a review
+- Before handing a change to a release step (then also run `moodle-release-preflight`)
+- **Skip when:** spiking or prototyping code that will not be merged
+
+## Two rules that govern every item
+
+1. **A gate that printed nothing has proven nothing.** Before trusting a
+   "0 findings" result, feed the gate one known-bad input (a missing docblock, an
+   unsorted lang key, a deliberately failing test) and confirm it complains. A
+   grep pattern that can never match, a test suite that is empty, and a linter
+   pointed at the wrong path all look exactly like "clean".
+2. **Verify the effect, not the exit code.** A script that did not throw has not
+   necessarily worked. Read the DB row, the rendered page, the file on disk, or
+   the log line that proves the change happened.
+
+## 1. Code style and phpdoc
+
+Run the same binary CI runs; it has real exit codes:
+
+```bash
+for s in phplint phpmd "phpcs --max-warnings 0" "phpdoc --max-warnings 0" validate savepoints; do
+    moodle-plugin-ci $s /path/to/plugin > "ci_${s%% *}.log" 2>&1
+    echo "$s exit: $?"
+done
+```
+
+- Run `mustache` and `grunt` against the plugin installed inside a Moodle tree
+  (`-m <moodle>`), not the repo path; `mustache` exits 1 'not within basename'
+  on a path outside it.
+- `phpmd` exits 0 even when it reports violations, so read its log.
+- The standalone `local_moodlecheck` CLI (`local/moodlecheck/cli/moodlecheck.php`)
+  also exits 0 on errors, and its text output reads `Line 54: ...`. If you parse
+  it, grep `Line [0-9]+:` and prove the pattern matches known-bad output once.
+- Lint JS and CSS from inside a Moodle tree, at the plugin's real path: core's
+  ESLint config scopes AMD rules by path, so a copy elsewhere gets other rules.
+- Never trust `grunt ... --force`: it downgrades every later failure to a
+  warning and still prints "Done, but with warnings."
+
+**Docblock gotchas moodlecheck catches:**
+
+- A `@param` type containing a space (`array<string, mixed>`, `array{a: int}`)
+  is read as type plus name, so it reports an incomplete parameter list. Keep
+  `@param` types plain and describe the shape in prose.
+- Every function, test helpers included, needs a description sentence and
+  complete `@param` / `@return` tags. Signature edits without a matching
+  `@param` are the usual miss.
+- `@return` is not name-matched (generics are fine there); never write a
+  literal `@param` inside docblock prose.
+
+## 2. Recurring review gates
+
+- Every Mustache template has an `Example context (json):` block in its docblock.
+- `$string[...]` keys in `lang/en/<component>.php` are sorted alphabetically.
+  Assert it with a script over the whole file after any insertion rather than
+  picking the insertion point by eye. phpcs checks sorting only with
+  `--runtime-set moodleBranch <n>`.
+- Every string key the code uses exists. Grep for static keys, and load the
+  pages that build keys dynamically (`get_string('status_' . $state, ...)`)
+  and check that no `[[` placeholder appears.
+- `defined('MOODLE_INTERNAL') || die();` only in files with side effects
+  (`lib.php`, `db/*.php`, `settings.php`, `version.php`); moodle-cs flags it in
+  plain class files as `MoodleInternalNotNeeded`.
+- No scaffolding placeholders left in file headers (`@copyright`, author).
+- `version.php` `$plugin->requires` is not below the lowest Moodle branch the
+  plugin claims to support.
+
+## 3. Tests
+
+- The plugin's PHPUnit tests pass; Behat features pass if the change touches UI
+  or user-visible behavior.
+- **Confirm plugin tests actually exist and ran.** `moodle-plugin-ci phpunit`
+  over an empty `tests/` directory passes, so "CI is green" is not evidence of
+  coverage. Check the run's test count.
+- PHPUnit loads all of core, but a web request does not. Code calling a core
+  free function (`create_course()`, `fulldelete()`) without the matching
+  `require_once` can pass tests and fail in the browser. Hit that path for real.
+
+## 4. Upgrade path
+
+- A `db/install.xml` change is paired with a `db/upgrade.php` step and a savepoint
+  (`upgrade_plugin_savepoint()`, or `upgrade_mod_savepoint()` for activities), and the `$plugin->version` build
+  number is raised. A schema change must bump `$plugin->version`; the
+  human-readable `$plugin->release` is a separate decision.
+- Test both paths: a fresh install and an upgrade from the previous release.
+  Both must produce the same schema, and the install log must contain no
+  `XMLDB has detected` or `Debugging:` lines.
+- `moodle-plugin-ci savepoints` passes.
+
+## 5. Course lifecycle
+
+If the plugin stores course- or activity-linked data, check each of these, or
+state why it does not apply:
+
+- **Backup and restore:** `backup/moodle2/backup_<mod>_activity_task.class.php`,
+  `backup_<mod>_stepslib.php` and the restore counterparts cover every table
+  holding course data. A restored course behaves like the original.
+- **Restore cleans its input.** A crafted `.mbz` is untrusted input: apply the
+  same `clean_param()` / allowlist logic the forms apply.
+- **Course reset needs all three callbacks** for an activity module:
+
+```php
+function myplugin_reset_course_form_definition(&$mform) {
+    $mform->addElement('header', 'mypluginheader', get_string('modulenameplural', 'mod_myplugin'));
+    $mform->addElement('advcheckbox', 'reset_myplugin_attempts', get_string('removeattempts', 'mod_myplugin'));
+}
+
+function myplugin_reset_course_form_defaults($course) {
+    return ['reset_myplugin_attempts' => 1];
+}
+
+function myplugin_reset_userdata($data) {
+    // Delete user data when $data->reset_myplugin_attempts is set, reset
+    // gradebook entries, and return a status array for the reset report.
+}
+```
+
+  (Core looks these up as `<modname>_reset_...`, without the `mod_` prefix, e.g.
+  `forum_reset_userdata()` in `mod/forum/lib.php`.) A lone `reset_userdata`
+  leaves the option unreachable in the reset form and grades stale.
+- **Uninstall:** add `db/uninstall.php` with `xmldb_<component>_uninstall()` if
+  the plugin writes outside its own tables (core grade items, files, config in
+  other components) that would otherwise be orphaned.
+- **Privacy:** every table and external location declared in `get_metadata()` is
+  handled by export and by all three delete paths, and a `provider_test`
+  exercises contexts, users, export and delete on generated data. A declared
+  table that is never serviced is a compliance defect; a stale table name after
+  a rename throws. See `moodle-privacy-gdpr`.
+
+## 6. Security self-review of changed sinks
+
+For every changed entry point (form handler, external function, AJAX call,
+`pluginfile` callback):
+
+- `require_login()` / `require_capability()` in the right context, and the
+  capability re-checked at asynchronous sinks (scheduled/adhoc tasks, deferred
+  grade pushes), not only at request time.
+- Ids and values from the client are re-validated server-side, never trusted
+  from hidden fields.
+- Any client-side limit (size, duration, count) is also enforced server-side.
+- Output is escaped at the sink (`s()`, `format_string()`, `format_text()`),
+  especially anything that reaches `innerHTML`.
+- User-uploaded files are served with `$forcedownload = true` unless their
+  MIME type is validated.
+
+Before a release, run `moodle-release-preflight` for the full list of defect
+classes reviews have caught, and `moodle-security-audit` for the broad checklist.
+
+## 7. Verified in a running site
+
+Green tests are not the finish line. Observe the changed behavior on a real
+Moodle site after installing the plugin and purging caches:
+
+- Read the stored record, the rendered notice, or the screenshot's actual
+  content, not just the fact that the command returned.
+- Watch values set before a bulk write (restore, import, `update_record()`)
+  that can silently overwrite them.
+- Check the web server log for PHP warnings and `Debugging:` output from the
+  pages you touched, with developer debugging enabled.
+
+## 8. Release notes and docs
+
+- `README.md` still describes current behavior and settings.
+- The changelog records user-visible changes, in the format the plugin already
+  uses.
+- Any user manual or help page that names a changed, renamed, or removed
+  setting, field or page is updated. A removal is the dangerous case: the
+  doc becomes actively wrong rather than incomplete.
+- `$plugin->release` is changed only as part of a deliberate release, and
+  `composer.json` (if present) is still valid.
+
+## 9. Clean working state
+
+- Every background process you started (Behat, a PHP built-in server,
+  chromedriver, watchers) is stopped, and the port is free. Stop processes by
+  exact PID after checking their command line, not by broad `pkill -f` patterns.
+- The diff contains only intended files: no build output, logs, `node_modules/`,
+  or hand edits to `amd/build/` or `thirdparty/` code.
+
+## Common mistakes
+
+| Mistake | Consequence | Fix |
+|---|---|---|
+| Reporting "clean" from a gate that printed nothing | Real errors ship; CI fails later | Prove the gate fires on a known-bad input |
+| Parsing moodlecheck output with the wrong pattern | "0 findings" forever | Match `Line [0-9]+:` and test the grep |
+| `grunt --force` treated as success | Stylelint or ESLint errors hidden as warnings | Run `moodle-plugin-ci grunt` and check its exit code |
+| Empty `tests/` with a green CI badge | No coverage, false confidence | Check the reported test count |
+| Only `*_reset_userdata` implemented | Reset option never shown; grades stale | Implement all three reset callbacks |
+| Restore trusts `.mbz` values | Stored XSS or broken data via crafted backup | Clean restored fields like form input |
+| `install.xml` changed without an upgrade step | Upgraded sites differ from fresh installs | Add an `upgrade.php` step plus savepoint |
+| Privacy table declared but never exported or deleted | Compliance defect | Cover every table in export and delete, with a test |
+| "The script didn't throw" treated as success | Setting not saved, record not deleted | Read back the effect |
+
+## References
+
+- https://moodledev.io/general/development/tools/phpcs
+- https://moodledev.io/general/development/policies/codingstyle
+- https://moodledev.io/general/development/tools/behat
+- https://moodledev.io/general/development/tools/phpunit
+- https://moodledev.io/docs/guides/upgrade
+- https://moodledev.io/docs/apis/subsystems/backup
+- https://moodledev.io/docs/apis/subsystems/privacy
+- https://moodledev.io/docs/apis/plugintypes/mod
+- https://moodledev.io/general/community/plugincontribution/checklist
+- https://moodlehq.github.io/moodle-plugin-ci/
+
+
+---
+
+### moodle-field-lessons
+
+> Use when writing, reviewing or testing Moodle plugin code, to avoid non-obvious pitfalls learned from shipping real plugins: version.php supported ranges and cross-branch API guards, services.php/tasks.php registration, authorisation and state-collision bugs, output escaping (html_writer, format_string, imported content), DB/XMLDB API small print, backup/restore/reset and DST-safe date shifting, privacy provider drift, lang string placeholders, forms and admin settings, PHPUnit/Behat blind spots, AMD/modal/TinyMCE gotchas, navigation and block placement, and CI false greens. Skip when you need a full checklist for one topic (use the sibling skill named in each section).
+
+# Moodle Field Lessons
+
+## Overview
+
+Rules distilled from defects that shipped (or nearly shipped) in real Moodle
+plugins despite passing phpcs, PHPUnit and CI. Each rule is short and
+imperative, with the reason it matters. Topic checklists live in sibling
+skills; this skill holds the small print those checklists do not spell out.
+Longer rules for testing, forms, lang strings, JS and UI are in
+[reference.md](reference.md).
+
+## When to Use
+
+- Writing or changing `version.php`, `db/*.php`, `install.xml`, external functions, restore steps or settings
+- Reviewing a diff for things linters and unit tests cannot see
+- Designing tests, especially security regression tests and date/timezone assertions
+- Supporting several Moodle branches from one code line
+- **Skip when:** you need the broad checklist for one topic: `moodle-security-audit`
+  (security), `moodle-release-preflight` (before a release or external review),
+  `moodle-definition-of-done` (before calling a task finished),
+  `moodle-phpunit-testing`, `moodle-behat-testing`, `moodle-ci-matrix`,
+  `moodle-5-3-changes`
+
+## The most expensive mistakes
+
+1. **Trusting the green suite.** PHPUnit cannot see: services/tasks never
+   registered, free functions the bootstrap preloads, routed POST bodies,
+   hook dispatch on module pages, backup element collisions, real form POSTs.
+   Every such change needs one real HTTP request.
+2. **Calling a newest-branch API across a supported range.** Your local site
+   is one row of the CI matrix. Guard it or use the name every branch has.
+3. **Changing `db/services.php` or `db/tasks.php` without a version bump.**
+   Upgrade prints success; nothing is registered.
+4. **Authorising against a client-supplied id**, or checking capability only
+   at request time and not at the async sink.
+5. **Two actors writing the same state value** to one column, so the
+   lower-privileged one can undo the higher-privileged one's decision.
+6. **Unescaped `html_writer::tag()` contents** and unclean restore input.
+7. **A security test never seen failing.** It passes against vulnerable code
+   when the fixture misses the column the renderer reads.
+8. **DDL or payloads from a standalone CLI script** - `config.php` is the live DB.
+9. **Fixed-seconds date shifts across DST** in restore/reset for wall-clock data.
+10. **Hand-computed expected timestamps** in tests, then "fixing" correct code.
+
+## Versioning and cross-branch support
+
+- **`$plugin->supported` is an inclusive `[low, high]` pair**, even for one
+  branch: `[502, 502]`, never `[502]`. A malformed value such as `[502]` makes
+  core throw `coding_exception('Incorrect syntax in plugin supported
+  declaration')` when it loads plugin info; third-party tooling may silently
+  fall back to `requires` instead. Keep `requires` at or above the lowest branch.
+
+  ```php
+  $plugin->requires = 2025041400; // 5.0.
+  $plugin->supported = [500, 502];
+  ```
+
+- **Guard every core API that changed inside your range** with
+  `method_exists()`/`class_exists()`. Grep each stable branch for the symbol and
+  for deprecation attributes; 5.0 keeps code under `lib/`, 5.1+ under
+  `public/lib/`, so a single-path grep reports false absences.
+
+  ```php
+  if (method_exists(\core_courseformat\local\cmactions::class, 'delete')) {
+      (new \core_courseformat\local\cmactions($course))->delete($cmid);
+  } else {
+      course_delete_module($cmid);
+  }
+  ```
+
+  Old APIs emit deprecation notices that `--fail-on-warning` CI rejects on the
+  newest branch; new ones fatal ("Call to undefined method") on the oldest.
+- **When core namespaces a global class** (for example `navigation_node`
+  gaining a namespaced name with a `class_alias`), keep using the global name
+  until the lowest supported branch has the new one. A `use` of the new name
+  in a hook listener breaks every page on older branches.
+- **Raise `$plugin->dependencies`** from `ANY_VERSION` to the dependency's
+  `$plugin->version` in the same commit that starts calling a newer symbol
+  from it. `ANY_VERSION` only proves the plugin is installed.
+- **Keep `version` and `release` separate.** Schema, services, tasks,
+  capabilities, caches or messages changes bump the numeric `version`; bump
+  the semantic `release` only as a deliberate release, with notes and a tag.
+- **5.1+ `/public` layout:** core admin CLI stays at `<root>/admin/cli/`;
+  plugin CLI (including `admin/tool/phpunit` and `admin/tool/behat`) lives
+  under `<root>/public/`. Do not add `public/` to core CLI paths by analogy.
+
+## Registration that only happens on upgrade
+
+- **`db/services.php`, `db/tasks.php`** (and other `db/` definitions) are
+  re-read only when the plugin's numeric version changed. Without a bump,
+  `admin/cli/upgrade.php` says "No upgrade needed", AJAX calls fail
+  (`invalidrecordunknown`) or the task never exists, and unit tests calling
+  the class directly stay green. Verify the effect:
+
+  ```php
+  $info = \core_external\external_api::external_function_info(
+      'local_myplugin_do_thing', IGNORE_MISSING);
+  ```
+
+  ```bash
+  php admin/cli/scheduled_task.php --list | grep local_myplugin
+  ```
+
+- **PHPUnit init is a no-op** while the site-wide versions hash is unchanged:
+  a table added to `install.xml` without a version bump never reaches the
+  test DB. Rebuild with `util.php --drop` then `init.php`. "Initialised for
+  different version" means some component changed on disk, not that yours
+  is broken.
+- **`$CFG->routerconfigured = true`** must be set in `config.php` above the
+  `require_once` of `lib/setup.php`; setup normalises it early.
+
+## Web services and routed controllers
+
+- **`'loginrequired' => false` functions must not call
+  `self::validate_context()`** - it ends in `require_login()`. Set the page
+  context with `$PAGE->set_context()` instead.
+- **Match the gate of the page the function backs.** Validating course
+  context enforces enrolment; if the page requires ownership, unenrolled
+  owners silently get `requireloginerror`. Test with a non-enrolled owner.
+- **Routing Engine controllers without a `requestbody` schema** get
+  `$request->getParsedBody() === []` in production (the request validator
+  replaces it). Declare the schema, or read POST data with `optional_param()`
+  plus `require_sesskey()`. `route_testcase::process_request()` does not run
+  that middleware, so verify with a real HTTP POST.
+
+## Authorisation and state
+
+- **Never authorise against a client-supplied id.** Derive course, context and
+  instance from the URL/context; re-validate each submitted id against the set
+  you offered; re-check capability at async sinks (tasks, grade pushes);
+  enforce size/duration limits server-side; do not ship answer or grading
+  metadata to the browser.
+
+  ```php
+  $accountid = required_param('accountid', PARAM_INT);
+  if (!array_key_exists($accountid, $offeredaccounts)) {
+      throw new \moodle_exception('invalidaccount', 'mod_myplugin');
+  }
+  ```
+
+- **One permission helper guarding several actions** is a smell: check each
+  action wants that gate. Test actor -> control -> resulting state, and
+  assert a lower-privileged subject cannot reverse a state a higher one set.
+- **Grep every writer of a status column**, not only its readers, before
+  reusing a value. Never let two actors of different privilege write the same
+  value; give each a distinct state or record the actor on the row.
+- **Widening who sees a stored field is a new output sink.** A column filled
+  from `$e->getMessage()` is untrusted text (it disclosed a server path once
+  shown to non-admins); show only plugin-composed messages.
+- **Enumerate all entry points mechanically before an access audit** (every
+  top-level and `admin/**` PHP file, every external function):
+  `grep -rlE 'require_login|require_course_login' --include='*.php' .`
+  Sibling controllers gated only by `require_login()` are where exports leak.
+- **Serve uploads with force-download** unless the MIME type is validated
+  audio/video; allowlist type/extension on upload; escape at output.
+- **`db/access.php`: `clonepermissionsfrom` overrides `archetypes`** and copies
+  the source capability's real grants. Fixing access.php later does not
+  re-derive grants on existing sites; check `{role_capabilities}`.
+- **Account-linking and token callbacks need a session-bound, single-use
+  `state`** issued before the redirect, or they allow login CSRF.
+- **Test system-context gates with a separate account or "Log in as"**, never
+  "Switch role to" (course contexts only).
+- **Inspect uploaded plugin ZIPs with core** (`\core\update\validator`,
+  `\core\update\code_manager::unzip_plugin_file()`); never `include` an
+  untrusted `version.php` - tokenise it with `token_get_all()` for the fields
+  core's parser skips (`supported`, `dependencies`).
+- **Probe suspected traversal/XXE live before filing it.** Core's zip extractor
+  strips `../`; flag-less `simplexml_load_file()` is XXE-safe on PHP 8 with
+  libxml >= 2.9 unless `LIBXML_NOENT`/`LIBXML_DTDLOAD` is passed.
+
+## Output escaping
+
+- **`html_writer::tag()`, `link()`, `select()` escape attributes, not contents.**
+  Wrap user text in `s()` at the sink; do not `s()` an already
+  `format_string()`-ed value (double-encodes `&`).
+
+  ```php
+  echo html_writer::tag('option', s($label), ['value' => $id]);
+  ```
+
+- **`format_string()` strips tags; `s()` escapes them.** Its `<`/`>` handling
+  depends on the `formatstringstriptags` site setting (on by default), so
+  "uses `format_string()`" is not an XSS argument on its own. Tests written
+  against `s()` output break after migrating.
+- **Content you write into core tables is rendered by core**, often `noclean`.
+  `clean_text()` skips text without `<`, `>` or `&`, so a Markdown
+  `[x](javascript:...)` imported as FORMAT_MARKDOWN survives. Clean every
+  imported field and convert or clamp the format.
+- **`fullname()`, `get_string()` and `html_writer` content escape at no
+  layer**, so wrap the composed value in `s()`. `format_string(..., ['escape'
+  => false])` cannot undo pre-encoded entities; use
+  `html_entity_decode(format_string(...))` for plain-text sinks.
+- **Before calling `{{{ }}}` a sink, read `export_for_template()`**; escaping
+  often happens there. Prove findings with a payload through the real page.
+- **In block classes use `$this->page`, never `global $PAGE`** (moodle-cs
+  `moodle.PHP.ForbiddenGlobalUse.BadGlobal` fails CI).
+- **Filters emitting tall inline content** (ruby annotations, math) inside
+  `div.no-overflow` need top padding in `styles.css`; clipping shows in
+  Firefox and is nearly invisible in Chromium:
+  `.no-overflow:has(.filter_myplugin-tall) { padding-top: .75em; }`
+
+## DB and XMLDB small print
+
+- **`update_record()` writes every property.** Use `set_field()` or a scoped
+  UPDATE near concurrently incremented counters.
+- **`get_in_or_equal()` defaults to `?` params**; pass `SQL_PARAMS_NAMED` when
+  the query uses named params ("Mixed types of sql query parameters!!").
+- **`get_records()` has six parameters** and is keyed by the first field in
+  `$fields` (`id` for `*`). A seventh "key by" argument is silently ignored;
+  put the key column first in `$fields` or use `get_records_menu()`.
+- **XMLDB foreign keys are indexes, not enforced FKs.** To change NOT NULL on a
+  keyed column: `drop_key()` -> `change_field_notnull()` -> `add_key()`. Never
+  raw `ALTER TABLE` with a hardcoded prefix.
+- **Never declare `CHAR NOTNULL="true" DEFAULT=""`.** After any install.xml
+  change, fresh-install and grep the output for `debugging()`; pair every
+  install.xml fix with an upgrade.php step.
+- **A new format/units column beside a value** widens the value's contract for
+  every reader (other plugins, WS clients). Extend them or normalise on write.
+- **Never run DDL or mutating probes from a standalone CLI script.** Use an
+  `advanced_testcase` with `resetAfterTest()`; if a script must touch the DB,
+  print `$CFG->dbname`/`$CFG->prefix` first.
+
+## Backup, restore, reset and uninstall
+
+- **Plan all of them for any data-storing plugin**: backup/moodle2, the reset
+  triad (`*_reset_course_form_definition()`, `*_reset_course_form_defaults()`,
+  `*_reset_userdata()`) plus gradebook reset, and `db/uninstall.php` for data
+  outside your tables. Only `*_reset_userdata()` means no checkbox, so the
+  deletion branch is unreachable.
+- **Restore input is attacker input**: apply the same `clean_param()` /
+  allowlist in every `process_*()` step as the forms and settings do.
+- **Restore overwrites course settings, including `visible`.** Re-assert the end
+  state after bulk writes (`course_change_visibility($id, false)`), and test it.
+- **Wall-clock dates across DST:** restore/reset shifts add fixed seconds
+  (09:00 becomes 08:00). Round the offset to days; shift in the right timezone.
+
+  ```php
+  $days = (int) round(($this->apply_date_offset(1) - 1) / DAYSECS);
+  $new = (new \DateTimeImmutable('@' . $ts))->setTimezone($tz)
+      ->modify("+{$days} days")->getTimestamp();
+  ```
+
+- **List every path that writes or shifts each timestamp** you compare
+  (insert, restore offset, reset timeshift); restore shifts date fields but
+  not snapshot times.
+- **Build test `.mbz` files with core's packer**
+  (`get_file_packer('application/vnd.moodle.backup')`), not `tar -czf`: a
+  missing `.ARCHIVE_INDEX` fails with a misleading "missing moodle_backup.xml",
+  so negative tests pass for the wrong reason. Do not name nested backup
+  elements after columns of the same record.
+- **Privacy:** every table in `get_metadata()` must be found by both
+  discovery methods, exported by `export_user_data()`, and deleted by all
+  three delete methods, with a test on generator rows; grep
+  the provider after any table rename.
+
+## Activity module lifecycle
+
+- **Inside `<modname>_add_instance()` use `$data->coursemodule`**, never a
+  lookup by instance: the `course_modules` row still has `instance = 0`.
+- **Module calendar events with a `groupid`** are visible only to group
+  members; a groupless teacher with `accessallgroups` sees none. Offer another view.
+- **Declaring `FEATURE_COMPLETION_HAS_RULES` requires
+  `classes/completion/custom_completion.php`**; test repeat and degenerate
+  attempts, not only the happy path.
+- **Question engine outside mod_quiz:** pass `slots` to
+  `process_all_actions()` and filter post data to `get_field_prefix($slot)`,
+  or every slot named in client data is graded.
+
+## More lessons in reference.md
+
+[PHPUnit traps](reference.md#phpunit-traps), [security regression tests](reference.md#security-regression-tests), [Behat and browser automation](reference.md#behat-and-browser-automation), [forms and admin settings](reference.md#forms-and-admin-settings),
+[lang strings](reference.md#lang-strings), [JavaScript, AMD, modals, TinyMCE](reference.md#javascript-amd-modals-tinymce), [UI, CSS and themes](reference.md#ui-css-and-themes),
+[navigation, blocks and pages](reference.md#navigation-blocks-and-pages), [core API small print](reference.md#core-api-small-print), [CI false greens](reference.md#ci-false-greens).
+
+## Common mistakes
+
+| Mistake | Consequence | Fix |
+|---|---|---|
+| `$plugin->supported = [502];` | Core throws `coding_exception`; some tooling falls back to `requires` | `[502, 502]` |
+| services.php edit, no version bump | Function never registered | Bump `version`, check `external_function_info()` |
+| `validate_context()` in a public WS | Anonymous callers refused | `$PAGE->set_context()` |
+| `html_writer::tag('td', $name)` | Stored XSS | `s($name)` |
+| `get_coursemodule_from_instance()` in add_instance | "Can't find data record", creation rolled back | `$data->coursemodule` |
+| Shared "hidden" state for author and moderator | Moderation bypass | Distinct states or record the actor |
+| `.finally()` on a `core/ajax` promise | Works once, then control stays disabled | `Promise.resolve(...)` wrapper |
+| `PARAM_INT` on a submit button | Action silently does nothing | `PARAM_RAW`, test `!== ''` |
+| `tar -czf` for a tampered .mbz | Negative test passes for the wrong reason | Core's backup packer |
+| Expected timestamps computed by hand | Correct code "fixed" to match a wrong test | Derive with an independent tool |
+
+## References
+
+Moodle developer docs: [version.php](https://moodledev.io/docs/apis/commonfiles/version.php), [web services](https://moodledev.io/docs/apis/subsystems/external), [routing](https://moodledev.io/docs/apis/subsystems/routing),
+[output and escaping](https://moodledev.io/docs/apis/subsystems/output), [DML](https://moodledev.io/docs/apis/core/dml), [backup](https://moodledev.io/docs/apis/subsystems/backup),
+[privacy](https://moodledev.io/docs/apis/subsystems/privacy), [access](https://moodledev.io/docs/apis/subsystems/access).
 
 
 ---
@@ -957,6 +1945,16 @@ php admin/cli/hooks_list.php --hook=core\\hook\\output\\before_http_headers
 - [ ] Tests cover both the action and the no-op branch
 - [ ] Legacy callback removed (or version-gated) after migration
 - [ ] `version.php` bumped
+
+## Moodle 5.3 notes (beta — re-verify at 5.3.0)
+
+- New hook `\core\hook\email\before_email_to_user`, dispatched by `email_to_user()`: edit `$hook->email` fields, call `$hook->email->add_additional_header()`, or veto sending with `$hook->email->add_block_reason()` ([MDL-69724](https://tracker.moodle.org/browse/MDL-69724)).
+- `\core_user\hook\extend_user_menu`: `add_navitem()`/`get_navitems()` deprecated → `add_menu_item()` with `\core_user\output\user_action_menu\{link,divider,header,text}` ([MDL-88938](https://tracker.moodle.org/browse/MDL-88938)).
+- Full 5.3 catalogue: `moodle-5-3-changes`.
+
+## See also
+
+- `moodle-field-lessons` (generalized field lessons for this area)
 
 
 ---
@@ -1235,6 +2233,14 @@ Bumping `'version' => N` in `db/mobile.php` invalidates app's cached styles.
 | Not bumping styles `version` | App keeps old CSS |
 | Calling `fetch()` directly | Use `CoreSitesProvider` — handles auth + tokens |
 
+## Moodle 5.3 notes (beta — re-verify at 5.3.0)
+
+- **Breaking:** `login/token.php` rejects credentials in the query string (POST only), checks the service before authenticating, and drops `appsitecheck` ([MDL-87010](https://tracker.moodle.org/browse/MDL-87010)).
+- Deep-link auto-login (token/privatetoken) needs `tool_mobile/enabledeeplinkautologin`, default off ([MDL-88924](https://tracker.moodle.org/browse/MDL-88924)).
+- Course-module web services return the standard cm fields (`lang`, `section`, `visible`, `groupmode`, `groupingid`); build `get_*_by_courses` returns from `helper_for_get_mods_by_courses::standard_coursemodule_elements_returns()` ([MDL-87241](https://tracker.moodle.org/browse/MDL-87241)).
+- New `mod_forum_set_read_state` ([MDL-87887](https://tracker.moodle.org/browse/MDL-87887)); `gradereport_user_get_grade_items` adds optional `parentcategoryid` ([MDL-64304](https://tracker.moodle.org/browse/MDL-64304)).
+- Full 5.3 catalogue: `moodle-5-3-changes`.
+
 ## References
 
 - Mobile addons: https://moodledev.io/general/app/development/plugins-development-guide
@@ -1243,6 +2249,7 @@ Bumping `'version' => N` in `db/mobile.php` invalidates app's cached styles.
 - Offline support: https://moodledev.io/general/app/development/plugins-development-guide/offline
 - Push notifications: https://moodledev.io/general/app/development/plugins-development-guide/notifications
 - App source: https://github.com/moodlehq/moodleapp
+- See also: `moodle-field-lessons` (generalized field lessons for this area)
 
 
 ---
@@ -1576,6 +2583,12 @@ $CFG->profilingautostart = false;
 
 Per-request: `Site admin > Development > Profiling`.
 
+## Moodle 5.3 notes (beta — re-verify at 5.3.0)
+
+- `queue_adhoc_task($task, true)` now returns the existing task id for a duplicate (was `false`); don't test truthiness for "newly queued" ([MDL-86422](https://tracker.moodle.org/browse/MDL-86422)).
+- `adhoc_task::set_soft_retry_delay()` reschedules without counting a failure (also 5.2.2+) ([MDL-79763](https://tracker.moodle.org/browse/MDL-79763)); block uninstall deletes instances in an ad-hoc task ([MDL-89289](https://tracker.moodle.org/browse/MDL-89289)).
+- Full 5.3 catalogue: `moodle-5-3-changes`.
+
 ## References
 
 - MUC: https://moodledev.io/docs/apis/subsystems/muc
@@ -1583,6 +2596,7 @@ Per-request: `Site admin > Development > Profiling`.
 - Performance recommendations: https://docs.moodle.org/en/Performance_recommendations
 - DB API recordsets: https://moodledev.io/docs/apis/core/dml#get_recordset
 - Profiling: https://moodledev.io/general/development/tools/profiling
+- See also: `moodle-field-lessons` (generalized field lessons for this area)
 
 
 ---
@@ -1813,12 +2827,21 @@ Avoid replacing the global `$DB` — breaks isolation.
     vendor/bin/phpunit --testsuite ${{ matrix.suite }}
 ```
 
+## Moodle 5.3 notes (beta — re-verify at 5.3.0)
+
+- Exporter/web-service strings use numeric entities (`&#38;` not `&amp;`), also 5.2.2+: update assertions ([MDL-79755](https://tracker.moodle.org/browse/MDL-79755)).
+- `admin/tool/phpunit/cli/util.php` gains `--snapshot[=NAME]`, `--restore=NAME` and `--upgrade`, so CI can restore a cached core install and upgrade in the plugin ([MDL-88495](https://tracker.moodle.org/browse/MDL-88495)).
+- Password/auth functions delegate to DI classes `\core\authentication\password` and `\core\authentication`, mockable via `\core\di::set()` ([MDL-88580](https://tracker.moodle.org/browse/MDL-88580)); `#[\DI\Attribute\Inject]` properties are filled by `\core\di::get()`/`make()` ([MDL-89528](https://tracker.moodle.org/browse/MDL-89528)).
+- `route_testcase` adds `assert_route_is_scoped()`, `assert_route_is_unscoped()`, `assert_route_required_scopes()` ([MDL-89089](https://tracker.moodle.org/browse/MDL-89089)).
+- Full 5.3 catalogue: `moodle-5-3-changes`.
+
 ## References
 
 - PHPUnit in Moodle: https://moodledev.io/general/development/tools/phpunit
 - Data generators: https://moodledev.io/docs/apis/subsystems/testing/generators
 - Test writing guide: https://moodledev.io/general/development/policies/testing
 - Coverage: https://moodledev.io/general/development/tools/phpunit#code-coverage
+- See also: `moodle-field-lessons` (generalized field lessons for this area)
 
 
 ---
@@ -1886,7 +2909,7 @@ defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'local_example';      // frankenstyle, must match dir
 $plugin->version   = 2026042500;           // YYYYMMDDXX, bump on any db/capability change
-$plugin->requires  = 2024100700;           // min Moodle version (4.5 LTS); use 2025041400 for 5.0+, 2025100600 for 5.1+, 2026042000 for 5.2+
+$plugin->requires  = 2024100700;           // min Moodle version (4.5 LTS); use 2025041400 for 5.0+, 2025100600 for 5.1+, 2026042000 for 5.2+; 5.3beta is 2026091600 (beta only, 5.3.0 value TBD)
 $plugin->release   = '1.0.0';
 $plugin->maturity  = MATURITY_STABLE;      // ALPHA | BETA | RC | STABLE
 $plugin->dependencies = ['mod_quiz' => 2024100700];  // optional
@@ -2089,6 +3112,18 @@ vendor/bin/phpcs --standard=moodle local/example
 - PHPUnit: `tests/<thing>_test.php` extending `advanced_testcase`, use `$this->resetAfterTest()`, generators via `self::getDataGenerator()->get_plugin_generator('local_example')`
 - Behat: `tests/behat/*.feature` with `@local_example` tag, step definitions in `tests/behat/behat_local_example.php`
 
+## Moodle 5.3 notes (beta — re-verify at 5.3.0)
+
+- **Breaking:** a module returning true for `FEATURE_GROUPMEMBERSONLY` fails install/upgrade; remove the case ([MDL-83231](https://tracker.moodle.org/browse/MDL-83231)).
+- **Breaking (report builder):** `set_main_table()` alias is mandatory ([MDL-88397](https://tracker.moodle.org/browse/MDL-88397)); columns are sortable by default, add `->set_is_sortable(false)` where needed ([MDL-87404](https://tracker.moodle.org/browse/MDL-87404)).
+- **Breaking:** `duration` element throws if `defaultunit` (default `MINSECS`) is not in `units` ([MDL-89434](https://tracker.moodle.org/browse/MDL-89434)); `mod_assign\event\marker_updated` no longer fired, observe `marker_added`/`marker_removed` ([MDL-87709](https://tracker.moodle.org/browse/MDL-87709)); quiz report subplugins must call `$this->print_action_bar(...)` ([MDL-81096](https://tracker.moodle.org/browse/MDL-81096)).
+- **Deprecated:** `user/lib.php` functions → `\core\user::*` (e.g. `\core\user::create_user()`) ([MDL-82650](https://tracker.moodle.org/browse/MDL-82650)); format `get_return_section()` → `get_page_section()`, `get_view_url()` `'sr'` → `'pagesectionid'` ([MDL-86284](https://tracker.moodle.org/browse/MDL-86284)).
+- Check `\core\session\manager::supports_cookies()`, not the `NO_MOODLE_COOKIES` constant ([MDL-87174](https://tracker.moodle.org/browse/MDL-87174)).
+- Course formats returning true from `uses_linear_navigation()` get the prev/next footer on by default unless they add a `format_<name>/enablelinearnav` setting ([MDL-89406](https://tracker.moodle.org/browse/MDL-89406)).
+- Plugin CSS must not assume a light page (experimental dark mode; use `--bs-*` variables) ([MDL-68037](https://tracker.moodle.org/browse/MDL-68037)).
+- New: `before_email_to_user` hook ([MDL-69724](https://tracker.moodle.org/browse/MDL-69724)); `moodle_exception` `previous:` argument ([MDL-88579](https://tracker.moodle.org/browse/MDL-88579)); REST route scopes `#[scopeset]`/`#[unscoped_resource]` ([MDL-89089](https://tracker.moodle.org/browse/MDL-89089)).
+- Full 5.3 catalogue: `moodle-5-3-changes`.
+
 ## References
 
 - Moodle Dev Docs: https://moodledev.io
@@ -2097,6 +3132,182 @@ vendor/bin/phpcs --standard=moodle local/example
 - XMLDB: https://moodledev.io/docs/apis/core/dml/xmldb
 - Privacy API: https://moodledev.io/docs/apis/subsystems/privacy
 - Hooks API (4.4+): https://moodledev.io/docs/apis/core/hooks
+- See also: `moodle-field-lessons` (generalized field lessons for this area)
+
+
+---
+
+### moodle-plugin-release
+
+> Use when preparing a Moodle plugin release — bumping $plugin->version vs $plugin->release, writing CHANGES.md/changelog entries, staging and tagging an annotated vX.Y.Z release, publishing to the Moodle Plugins directory via GitHub Actions, and confirming the release actually landed. Skip when only doing a schema-change version bump (use /moodle-bump-version) or pre-release QA (use moodle-definition-of-done / moodle-release-preflight).
+
+# Moodle Plugin Release
+
+## Overview
+
+Release mechanics for a Moodle plugin: the version numbers, the notes, the
+commit and tag, publishing, and checking that the release really arrived. The
+tag freezes a commit and, with a tag-triggered release workflow, **publishes it
+the moment it is pushed**, so every step before the push has to be read back,
+not assumed.
+
+## When to Use
+
+- A release has been decided on and the version bump approved
+- Setting up tag-triggered publishing to the Moodle Plugins directory
+- Checking whether a pushed tag actually reached the Plugins directory / Packagist
+- **Skip when:** the change only needs a `$plugin->version` bump for a schema
+  change (`/moodle-bump-version`), or you are still doing QA (walk
+  `moodle-definition-of-done` and `moodle-release-preflight` first).
+
+## 0. Preconditions — stop if any fails
+
+- **The bump was asked for.** Releases are deliberate; don't bump `release`
+  as a side effect of other work. Default to a patch (`z`) increment; a minor
+  or major bump needs a stated reason.
+- **QA is done**: `moodle-definition-of-done` walked for everything going into
+  the release; `moodle-release-preflight` walked if the plugin is being
+  submitted or its security surface changed.
+- **Run every static step of the plugin's own CI locally** and see each exit 0,
+  not a subset. phpcs passing does not cover `phpdoc` (moodlecheck) docblock
+  rules, and a missing `@param` found by Actions after tagging costs a moved tag:
+
+      grep -n 'moodle-plugin-ci' .github/workflows/*.yml
+      for c in phplint phpcpd phpmd validate savepoints; do
+          moodle-plugin-ci $c ./; echo "$c exit=$?"
+      done
+      for c in phpcs phpdoc; do
+          moodle-plugin-ci $c --max-warnings 0 ./; echo "$c exit=$?"
+      done
+
+  `--max-warnings` exists only on `phpcs` and `phpdoc`; on other commands it
+  aborts with "option does not exist", which looks like findings but is a
+  broken invocation. `phpmd` exits 0 over violations, so read its output.
+  `mustache` and `grunt` need a full Moodle checkout (`-m`), as in CI.
+
+## 1. `version.php` — two different numbers
+
+```php
+$plugin->version  = 2026092800;   // YYYYMMDDXX build number — must strictly increase
+$plugin->release  = '1.4.2';      // human, semver-like — bumped deliberately
+$plugin->requires = 2025041400;   // minimum Moodle build
+$plugin->supported = [500, 502];  // RANGE [low, high] of Moodle branches
+$plugin->maturity = MATURITY_STABLE;
+```
+
+| Number | When it changes | Rule |
+|---|---|---|
+| `version` | Any schema/upgrade/capability/cache-definition change **must** bump it; every release bumps it | Strictly greater than every previously shipped value; date-serial |
+| `release` | Only when cutting a release | Doesn't drag along with a schema bump; patch by default |
+
+A schema change needs a `version` bump plus a matching `upgrade.php` savepoint
+(see `/moodle-bump-version`), but does **not** by itself mean a new `release`.
+
+## 2. Release notes — keep all of them consistent
+
+- `CHANGES.md` (if the plugin uses it) — this version's notes; this is what
+  reviewers and the Plugins directory see.
+- `changelog.md` / `CHANGELOG.md` — prepend `## [x.y.z] - YYYY-MM-DD` with
+  `### Added / Changed / Fixed / Security` (Keep a Changelog).
+- `README.md` — update if behaviour or requirements changed (supported
+  Moodle versions must match `$plugin->supported`).
+- Every claim must be verifiable: list only checks you actually ran.
+
+## 3. Stage explicitly — never `git add -A`
+
+Other work may be sitting in the tree. Stage named paths, or re-read
+`git status --porcelain` immediately before staging and investigate any file
+you don't expect (don't sweep it in, don't delete it).
+
+## 4. Commit, read back, then tag
+
+```bash
+git commit -m "Release 1.4.2: <one-line summary>"
+git show --stat HEAD          # file list must match the release notes
+git tag -a v1.4.2 -m "1.4.2: <one-line summary>"
+git describe --tags --exact-match HEAD   # tag is on the commit you just read
+```
+
+If the read-back surprises you, delete the tag before it goes anywhere and fix
+the commit. Never leave a tag on a commit whose contents you haven't verified.
+
+## 5. Publishing to the Moodle Plugins directory
+
+A tag-triggered workflow using the moodlehq reusable release workflow:
+
+```yaml
+# .github/workflows/moodle-release.yml
+name: Release Plugin version to Moodle Marketplace
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to be released (e.g. v1.4.0)'
+        required: true
+jobs:
+  release-to-marketplace:
+    uses: moodlehq/moodle-plugin-release/.github/workflows/moodle-release.yml@main
+    with:
+      tag: ${{ inputs.tag }}
+    secrets:
+      MOODLE_MARKETPLACE_TOKEN: ${{ secrets.MOODLE_MARKETPLACE_TOKEN }}
+```
+
+- The plugin must already exist in the directory (first submission is manual);
+  the token comes from your moodle.org account and is stored as a repo secret.
+- With this workflow present, **pushing a `v*` tag publishes the release**.
+  Say so explicitly when handing a push to someone else, so they can hold the
+  tag back if they only meant to push the branch.
+- A red run usually means a missing or expired token secret; re-run it via
+  `workflow_dispatch` with the tag.
+
+## 6. Pushing tags
+
+- Prefer `git push --follow-tags`, or `git push && git push origin v1.4.2`.
+- **Avoid pushing many tags in one `git push --tags`:** GitHub does not
+  create push events when a single push updates more than three tags, so no
+  tag-triggered workflow runs at all. Push tags one at a time or in batches of
+  at most three.
+
+## 7. A pushed tag is not a published release
+
+Confirm ingestion downstream; these checks are anonymous HTTPS reads:
+
+- **Plugins directory:** the release workflow run went green, and the version
+  appears on the plugin's page.
+- **Packagist** (if the plugin is on Composer): the newest version clients
+  will actually see:
+
+      curl -s https://repo.packagist.org/p2/<vendor>/<package>.json \
+        | python3 -c "import json,sys;d=json.load(sys.stdin);k=list(d['packages'])[0];print(d['packages'][k][0]['version'])"
+
+  Until this prints the new tag, no client-side cache clearing helps.
+
+A failed remote read (auth error, network) is not evidence that something is
+missing. Record the release as "committed and tagged, push pending" until the
+push is confirmed, never as pushed.
+
+## Common mistakes
+
+| Mistake | Consequence | Fix |
+|---|---|---|
+| `release` bumped along with every schema change | Release numbers drift from actual releases | Bump `version` for schema; `release` only when releasing |
+| Tagging after phpcs alone | CI fails on `phpdoc`/`savepoints` after the tag is public | Run every CI step locally first |
+| `git add -A` for the release commit | Unrelated files shipped and tagged | Stage named paths; read back `git show --stat` |
+| `--max-warnings` passed to every command | Commands abort; looks like findings | Only `phpcs` and `phpdoc` accept it |
+| `git push --tags` with 4+ new tags | No workflow runs, nothing published | Push ≤3 tags per push |
+| `$plugin->supported = [502]` | Malformed: core throws `coding_exception` ("Incorrect syntax in plugin supported declaration") | `[502, 502]` for a single branch |
+| Treating a pushed tag as released | Clients can't see the version; time lost debugging caches | Check the workflow run and Packagist p2 JSON |
+
+## References
+
+- Version file: https://moodledev.io/docs/apis/commonfiles/version.php
+- Plugin release workflow: https://github.com/moodlehq/moodle-plugin-release
+- Plugin contribution checklist: https://moodledev.io/general/community/plugincontribution/checklist
+- moodle-plugin-ci: https://moodlehq.github.io/moodle-plugin-ci/
+- See also: `moodle-definition-of-done`, `moodle-release-preflight`, `moodle-ci-matrix`
 
 
 ---
@@ -2361,12 +3572,304 @@ Site admin > Users > Privacy and policies > Plugin privacy registry. Lists every
 | `delete_data_for_all_users_in_context` not honoring context level | Always check `$context->contextlevel` first |
 | Missing in plugin directory review | All providers required for moodle.org listing |
 
+## Moodle 5.3 notes (beta — re-verify at 5.3.0)
+
+- Boost's experimental colour mode stores user preference `theme_boost_colourmode` (declared via `add_user_preference()` and exported in `theme_boost\privacy\provider::export_user_preferences()`) and mirrors it into a cookie of the same name; list it in site cookie notices ([MDL-68037](https://tracker.moodle.org/browse/MDL-68037)).
+- Full 5.3 catalogue: `moodle-5-3-changes`.
+
 ## References
 
 - Privacy API: https://moodledev.io/docs/apis/subsystems/privacy
 - Implementing the API: https://moodledev.io/docs/apis/subsystems/privacy/api
 - Subsystems: https://moodledev.io/docs/apis/subsystems/privacy/api#subsystems
 - Testing: https://moodledev.io/docs/apis/subsystems/privacy/api#testing
+- See also: `moodle-field-lessons` (generalized field lessons for this area)
+
+
+---
+
+### moodle-release-preflight
+
+> Use when about to release a Moodle plugin, submit it to the Moodle Plugins directory, or send it for an external security review, or when reviewing security-relevant changes before a tag. A pre-release checklist of defect classes that real Marketplace and security reviews repeatedly caught in shipped plugins despite green CI — client-trusted ids, client-only limits, inline-served uploads, unescaped output sinks, unclean restore, privacy provider drift, incomplete course reset/uninstall, vacuous tests, and minor gates. Skip when writing new feature code or doing a general security audit (use moodle-security-audit).
+
+# Moodle Release Preflight
+
+## Overview
+
+A pre-release self-audit that walks the defect classes external Marketplace and
+security reviews have repeatedly found in *shipped* Moodle plugins that green CI and phpcs did not catch. The goal is
+to catch the next instance before a reviewer does.
+
+This is not a general security audit. `moodle-security-audit` (and the
+`/moodle-security-review` command) teach the full checklist — `require_login`,
+sesskey, `$DB` placeholders, SSRF, secrets. This skill is narrower and
+empirical: only the classes real reviews caught, each with a concrete check and
+fix. Run both before a release; they overlap on purpose at the sinks.
+
+## When to Use
+
+- Before tagging a release or uploading to the Moodle Plugins directory
+- Before sending a plugin to an external security or code review
+- Reviewing a change that touches request handling, uploads, output, restore,
+  privacy, or course reset
+- **Skip when:** writing new feature code (use `moodle-plugin-development`) or
+  doing a broad security review (use `moodle-security-audit` /
+  `/moodle-security-review`)
+
+## How to run it
+
+Scope to the changed files, or the whole plugin for a release. For each class:
+run the check, report **pass / fail / N/A-with-reason**, and cite evidence
+(file:line, grep output, a test name). "Looks fine" is not a pass. The
+deliverable is the report — do not fix unless asked.
+
+**Triage by plugin shape first.** Decide from the file tree, not the prefix:
+
+- **Editor (`tiny_`/`atto_`), filter, block, theme** — usually no request
+  handlers, uploads, restore, or stored data. Classes **1, 2, 3, 5, 7 are
+  typically N/A**; focus on **4, 6, 8, 9**. Prove N/A with a grep (no
+  `required_param`, `send_stored_file`, or `backup/` dir) — don't assume.
+- **`mod_`, `assignsubmission_`/`assignfeedback_`, anything with an upload
+  endpoint, external functions, or its own tables** — run **all nine**.
+- **`local_`, `tool_`, `report_`** — a `local_` with an AJAX endpoint and a
+  table is activity-shaped (run all); a passive one is editor-shaped.
+
+```bash
+grep -rlnE "required_param|optional_param|send_stored_file" --include='*.php' . ; ls backup db/install.xml 2>/dev/null
+```
+
+The positive model for classes 1–3: one shared helper per plugin that loads the
+instance from the URL id, calls `validate_context()` / `require_capability()`,
+and re-scopes *every* client-supplied id to that instance.
+
+## 1. Trust boundary — never trust a client-supplied id/value
+
+**Seen in reviews:** a report plugin took the target course from a hidden form
+field, and its async grade-push task never re-checked the capability →
+cross-course gradebook write. An activity trusted a client-sent "type"
+value. Another left one id in a `<select>` un-revalidated against the menu that
+built it.
+
+Check:
+- Grep for request values that drive authorization, storage, or a privileged
+  action: `required_param`, `optional_param`, `addElement('hidden'`, `$data->`
+  fields from a form, external-function parameters.
+- Is authorization derived from the **URL/context** id, not the submitted one?
+- Is every submitted id **re-validated** against the allowed set — the same
+  records that built the select, or an instance-scoped query?
+- Is the capability re-checked at the **async sink** (scheduled/adhoc task,
+  service call)? A tampered stored value executes later.
+
+```php
+$cm = get_coursemodule_from_id('myplugin', $cmid, 0, false, MUST_EXIST);
+$context = context_module::instance($cm->id);
+require_login($cm->course, false, $cm);
+require_capability('mod/myplugin:grade', $context);
+
+$options = $DB->get_records_menu('myplugin_accounts', ['instanceid' => $cm->instance], '', 'id, name');
+if (!array_key_exists($data->accountid, $options)) {
+    throw new moodle_exception('invalidaccount', 'mod_myplugin');
+}
+```
+
+**Question engine:** `$quba->process_all_actions($timenow, $postdata)` processes
+the slots named in `$postdata['slots']`, or every slot in the usage if that key
+is absent, so a client-shaped `$postdata` can grade every question in one
+request. Filter `$postdata` to the allowed slots'
+`$quba->get_field_prefix($slot)` keys and set `$postdata['slots']` yourself. A
+regression test must include `:sequencecheck` plus a hostile `-submit`, or it
+passes vacuously.
+
+### 1b. Two roles writing the same state value into one column
+
+**Seen in reviews:** an owner-facing visibility toggle reused the status value
+that moderators used for a takedown. Authors could silently undo
+moderation. The readers of the column had been checked; the writers had not.
+
+Check: for every status/enum/flag column the change starts writing, grep every
+**other writer** — `grep -rnE "set_field\(.*'status'|update_record|'status' *=>" --include='*.php' .`.
+Can two privilege levels put a row into the same state? Then the column records
+neither who set it nor who may unset it.
+
+Fix: a **distinct** value per actor (e.g. `hidden_by_moderator`, which the author setter
+refuses to touch), or store the actor on the row. Confirm the privileged action
+is still reversible through the UI afterwards.
+
+## 2. Client-side-only limits are advisory
+
+**Seen in reviews:** plugins enforced maximum duration and size only in the
+browser; a direct POST ignored both.
+
+Check: for each limit (size, duration, count, rate) grep the server endpoint for
+a matching guard. If the only enforcement is in `amd/src/*.js`, it is bypassable.
+
+Fix: enforce server-side, independent of JS — `get_user_max_upload_file_size()`
+/ `get_max_upload_file_size()`, a duration probe, a `$DB->count_records()` gate.
+
+## 3. Student-uploaded files: force-download unless proven media
+
+**Seen in reviews:** student files were served inline with no content-type
+validation, giving stored XSS in the grader's session. Another plugin with the
+same gap was protected only because it forced download.
+
+Check:
+- `grep -rn "send_stored_file(" --include='*.php' .` — the 4th argument is
+  `$forcedownload`. For student files it must be true unless the MIME type is a
+  validated audio/video type.
+- The upload endpoint validates type/extension against an **allowlist** before
+  storing — not just `PARAM_FILE` on the name.
+- The `pluginfile` callback allowlists `$filearea`.
+
+```php
+$mimetype = $file->get_mimetype();
+$ismedia = in_array($mimetype, ['audio/webm', 'audio/ogg', 'video/webm', 'video/mp4'], true);
+send_stored_file($file, 0, 0, $forcedownload || !$ismedia, $options);
+```
+
+## 4. Escape at the output sink
+
+**Seen in reviews:** a label built with `html_writer::tag('span', $label)` — tag
+*content* is not escaped — and then assigned via `innerHTML` → stored XSS.
+
+Check:
+- `grep -rnE "html_writer::(tag|div|span|link)\(" --include='*.php' .` — is the
+  content argument a stored/user value without `s()` / `format_string()` /
+  `format_text()`? Attributes are escaped; content is not.
+- `grep -rnE "innerHTML|insertAdjacentHTML|outerHTML|dom\.create\(|setContent\(" amd/src` — then **trace
+  what feeds the sink**. HTML from `Templates.renderForPromise()` of a template
+  using `{{ }}` (no triple-mustache) is a PASS; string-concatenated HTML is a
+  FAIL. A grep hit is not a finding until the feed is traced.
+- In TinyMCE plugins, `editor.dom.create('div', {}, html)` is a sink; it passes
+  only when `html` comes from `Templates.renderForPromise()`.
+
+Fix: escape at the point of output — `s($label)` — which neutralises the payload
+however it entered the DB.
+
+**Content written into core tables is rendered by core — sometimes `noclean`.**
+Question text and question-category info render without cleaning, and
+`clean_text()` skips HTMLPurifier when the text has no `<`, `>` or `&` (or only
+p/em/strong/br tags), so a
+`FORMAT_MARKDOWN` link like `[x](javascript:...)` survives and renders as a live
+`javascript:` href. For imported or untrusted fields, clean every field yourself
+and convert or clamp `FORMAT_MARKDOWN`. Prove "no sink" by grepping core's
+output code, not just the plugin.
+
+**Probing a sink with a payload:** write the attacker-shaped data inside a
+PHPUnit test with `$this->resetAfterTest()`. A CLI script that includes
+`config.php` writes to the live database, even inside a transaction you roll back
+by hand.
+
+## 5. Backup/restore is untrusted input
+
+**Seen in reviews:** a plugin's forms cleaned a label (`PARAM_TEXT` plus admin
+`validation()`), but the restore step's `process_*()` wrote it verbatim — the
+only injection path.
+
+Check: every `process_*()` in `backup/moodle2/restore_*` applies the same
+`clean_param()` / allowlist as the interactive form before `insert_record()` /
+`update_record()`. Where a unique index exists, restore must upsert, not blindly
+insert.
+
+```php
+protected function process_myplugin_override($data) {
+    global $DB;
+    $data = (object) $data;
+    $data->label = clean_param($data->label, PARAM_TEXT);
+    $data->courseid = $this->get_courseid();
+    $DB->insert_record('local_myplugin_override', $data);
+}
+```
+
+## 6. Privacy provider: declared == handled, and tested
+
+**Seen in reviews:** a provider's discovery methods queried pre-rename table
+names → GDPR export and erasure threw `dml_exception`. Another declared a
+field in `get_metadata()` but never exported or deleted it.
+
+Check:
+- Every table/field in `get_metadata()` appears in **both** an export path and
+  every delete path (`delete_data_for_all_users_in_context`,
+  `delete_data_for_user`, `delete_data_for_users`).
+- After any table rename, grep `classes/privacy/` for the old name.
+- A `tests/privacy/provider_test.php` exercises `get_contexts_for_userid`,
+  `get_users_in_context`, export and delete against **generated** rows — this
+  catches both failures above.
+
+## 7. Course lifecycle completeness
+
+**Seen in reviews:** an activity had `<mod>_reset_userdata()` but no
+`_reset_course_form_definition()` / `_reset_course_form_defaults()` → the reset
+checkbox never appeared and grades were never reset. Plugins writing core grade
+items or redacting core content had no `db/uninstall.php` → orphaned data.
+
+Check (data-storing plugins):
+- Reset is the full triad: `myplugin_reset_course_form_definition()`,
+  `myplugin_reset_course_form_defaults()`, `myplugin_reset_userdata()` (core
+  calls `<modname>_reset_...` with no `mod_` prefix, e.g. `forum_reset_userdata()`)
+  — including the gradebook reset.
+- `db/uninstall.php` exists if the plugin writes outside its own tables.
+- Backup/restore round-trips every field and remaps cross-activity ids in
+  `after_restore()`.
+
+## 8. Tests exist and cover the sinks
+
+**Seen in reviews:** several plugins ran `moodle-plugin-ci phpunit` and `behat`
+over an **empty** `tests/` directory — the steps pass vacuously. Green CI is not
+coverage.
+
+Check: `find tests -name '*_test.php' -o -name '*.feature'` — are there real
+tests, and do they cover the paths this audit touched (upload, capability,
+privacy)? If CI runs test steps over an empty `tests/`, say so.
+
+## 9. Minor gates (cheap, recurring)
+
+- `error_log()` in a best-effort `catch` — flagged by phpcs. Prefer silent
+  handling, `debugging()`, or an event; if kept, document why and add the
+  `phpcs:ignore`.
+- Scaffolding placeholders left in file headers (a generator's default
+  `@copyright` holder, `TODO` package names) — grep for them.
+- `version.php` `$plugin->requires` not below the lowest branch in
+  `$plugin->supported`.
+- Timezones: passing another user's raw `timezone` field (the `99` "server
+  default" sentinel) to `get_user_timezone()` or `core_date::get_user_timezone()`
+  resolves to the *viewer's* zone — use `core_date::get_server_timezone()` for
+  that case. JS wall-clock-to-timestamp by diffing offsets is off
+  by the DST amount inside a transition window.
+
+## Common mistakes
+
+| Mistake | Why it fails review | Fix |
+|---|---|---|
+| Capability checked on the submitted course/cm id | Attacker picks the context | Derive context from the URL id; re-validate submitted ids |
+| Capability checked only at request time | Adhoc/scheduled task runs a tampered stored value | Re-check at the sink |
+| Limit enforced only in `amd/src` | Direct POST bypasses it | Mirror every limit server-side |
+| `send_stored_file(..., false, ...)` for student files | Stored XSS in grader session | Force-download unless validated media |
+| `html_writer::tag('span', $userval)` | Content arg is not escaped | `s()` / `format_string()` at the sink |
+| Reporting every `innerHTML` grep hit | Template-rendered HTML is already escaped | Trace the feed before reporting |
+| Restore writes fields verbatim | `.mbz` is attacker input | Same `clean_param()` as the form |
+| Provider tests absent | Renamed tables break export/erase silently | Test with generated rows |
+| Reset hook without form definition/defaults | Reset option never shown | Implement the full triad |
+| "CI is green" as evidence | Empty `tests/` passes vacuously | List the tests that cover each sink |
+
+## Report format
+
+A short table: class → pass / fail / N/A → evidence. List each fail with
+file:line and the fix pattern. Do not fix unless asked.
+
+## Extending this checklist
+
+When a Marketplace or security review finds a defect class not listed here, add
+it as a new numbered section in the same shape — what was seen (described
+generically), the check, the fix — so the next release is audited against it.
+
+## References
+
+- https://moodledev.io/general/development/policies/security
+- https://moodledev.io/general/community/plugincontribution/checklist
+- https://moodledev.io/docs/apis/subsystems/privacy
+- https://moodledev.io/docs/apis/subsystems/output
+- https://moodledev.io/docs/apis/subsystems/files
+- https://moodledev.io/docs/apis/subsystems/backup
 
 
 ---
@@ -2650,6 +4153,15 @@ phpcs --standard=moodle local/example
 
 Found a bug in Moodle core? **Don't open a public issue.** Email `security@moodle.org` per the [Moodle security policy](https://moodle.org/security/).
 
+## Moodle 5.3 notes (beta — re-verify at 5.3.0)
+
+- **Breaking:** `login/token.php` is POST-only for credentials (query string throws), checks the service before auth, and drops `appsitecheck` ([MDL-87010](https://tracker.moodle.org/browse/MDL-87010)).
+- `'allowcorsrequests' => true` in `db/services.php` sends `Access-Control-Allow-Origin: *` for nologin AJAX; set it only on `loginrequired => false` functions safe cross-origin ([MDL-87150](https://tracker.moodle.org/browse/MDL-87150)).
+- REST API: personal access tokens via `\core\api\token_manager` and `moodle/api:createtoken` ([MDL-87706](https://tracker.moodle.org/browse/MDL-87706)); a route with neither `#[scopeset]` nor `#[unscoped_resource]` has no scope restriction, so annotate every route ([MDL-89089](https://tracker.moodle.org/browse/MDL-89089)).
+- `\core\di::get(\core_auth\validate_user::class)` centralises pre-login checks: `validate_before_external_login($user)` (maintenance, deleted, unconfirmed, suspended, auth disabled, expired credentials), `validate_before_token_login($user)`, `validate_before_web_login($user)` (suspended and auth-disabled only) ([MDL-88580](https://tracker.moodle.org/browse/MDL-88580)).
+- HTMLPurifier now allows `<details>`/`<summary>` ([MDL-88618](https://tracker.moodle.org/browse/MDL-88618)); deep-link auto-login is off by default ([MDL-88924](https://tracker.moodle.org/browse/MDL-88924)).
+- Full 5.3 catalogue: `moodle-5-3-changes`.
+
 ## References
 
 - Security overview: https://moodledev.io/general/development/policies/security
@@ -2658,6 +4170,7 @@ Found a bug in Moodle core? **Don't open a public issue.** Email `security@moodl
 - File API: https://moodledev.io/docs/apis/subsystems/files
 - DML placeholders: https://moodledev.io/docs/apis/core/dml#placeholders
 - Reporting security: https://moodle.org/security/
+- See also: `moodle-field-lessons` (generalized field lessons for this area)
 
 
 ---
@@ -2957,6 +4470,18 @@ php admin/cli/purge_caches.php
 php admin/cli/build_theme_css.php --themes=yourtheme
 ```
 
+## Moodle 5.3 notes (beta — re-verify at 5.3.0)
+
+- **Breaking:** Classic removed; upgrade migrates its settings to Boost. Re-parent Classic child themes (or install Classic) before upgrading ([MDL-88351](https://tracker.moodle.org/browse/MDL-88351)).
+- **Breaking templates:** `theme_boost/drawer` `{{$drawerheadercontent}}` → `{{$drawercontrols}}` ([MDL-89050](https://tracker.moodle.org/browse/MDL-89050)); course-index `cm`/`section` ARIA moved, override both ([MDL-88949](https://tracker.moodle.org/browse/MDL-88949)); collapse-all toggle moved to `core_courseformat/local/content` ([MDL-88410](https://tracker.moodle.org/browse/MDL-88410)); block_timeline is React with no renderer/templates ([MDL-88287](https://tracker.moodle.org/browse/MDL-88287)).
+- **Dark mode (experimental):** Boost sets `data-bs-theme` on `<html>`; use `--bs-*`/`--mds-*` variables, keep `scss/moodle/dark.scss` the last import, output `\theme_boost\colour_mode::render_menu()` in custom navbars ([MDL-68037](https://tracker.moodle.org/browse/MDL-68037)).
+- **Nav markup:** primary/secondary nav are React `NavPill` (`.mds-nav-pill`, not `.nav-link`/`.moremenu`); navbar overrides should include `core/primarymoremenu` ([MDL-87830](https://tracker.moodle.org/browse/MDL-87830), [MDL-89294](https://tracker.moodle.org/browse/MDL-89294)).
+- **Moved templates:** `core/loginform` now in core, re-diff overrides ([MDL-89196](https://tracker.moodle.org/browse/MDL-89196)); modal title is `<h2 class="modal-title fs-5">` ([MDL-75699](https://tracker.moodle.org/browse/MDL-75699)); grade action bars use `core/navigation_action_bar`/`core/action_bar` ([MDL-81096](https://tracker.moodle.org/browse/MDL-81096)); `core/external_content_banner` deprecated ([MDL-89290](https://tracker.moodle.org/browse/MDL-89290)).
+- **Admin renderer:** override `notifications_page()` instead of `admin_notifications_page()`; drop banner-method overrides ([MDL-89290](https://tracker.moodle.org/browse/MDL-89290)); `upgradekey_form_page()` → `upgradekey_form_page_with_validation($url, false)` ([MDL-87896](https://tracker.moodle.org/browse/MDL-87896)).
+- **Fonts:** default is self-hosted Noto Sans; override `$font-family-sans-serif` to keep system fonts ([MDL-88412](https://tracker.moodle.org/browse/MDL-88412)).
+- **JS:** import from `'bootstrap'`, not `theme_boost/bootstrap/*`; exception: `util`/`dom` helpers still load directly (`bootstrap/dom/event-handler` on 5.3+) ([MDL-88766](https://tracker.moodle.org/browse/MDL-88766)).
+- Full 5.3 catalogue: `moodle-5-3-changes`.
+
 ## References
 
 - Themes: https://moodledev.io/docs/apis/plugintypes/theme
@@ -2965,13 +4490,14 @@ php admin/cli/build_theme_css.php --themes=yourtheme
 - Layouts: https://moodledev.io/docs/apis/plugintypes/theme/layouts
 - Theme settings: https://moodledev.io/docs/apis/plugintypes/theme/settings
 - Override templates: https://moodledev.io/docs/apis/subsystems/output/templates#overriding-templates
+- See also: `moodle-field-lessons` (generalized field lessons for this area)
 
 
 ---
 
 ### moodle-upgrade-migration
 
-> Use when upgrading a Moodle plugin across versions, fixing deprecated API usage, or migrating to Moodle 4.x/5.x (incl. 5.1/5.2) conventions — print_error, add_to_log, formslib changes, external_api namespace, Hooks API, /public doc-root, Routing Engine, PSR-4 migration, PHP 8.1–8.4 upgrades, and required upgrade.txt notes.
+> Use when upgrading a Moodle plugin across versions, fixing deprecated API usage, or migrating to Moodle 4.x/5.x (incl. 5.1/5.2/5.3) conventions — print_error, add_to_log, formslib changes, external_api namespace, Hooks API, /public doc-root, Routing Engine, PSR-4 migration, PHP 8.1–8.4 upgrades, and required upgrade.txt notes.
 
 # Moodle Upgrade & Migration
 
@@ -3168,6 +4694,15 @@ class content extends \core_courseformat\output\local\content { /* ... */ }
   - Everything in `lib/deprecatedlib.php` from ≤ 4.4 removed
 - New/expanded web services: `site_info`, `mobile_config`, `choice_results`.
 
+### 5.3 (beta — re-verify at 5.3.0)
+
+- **Requirements:** upgrade from 4.4+; PHP 8.3 min; MariaDB 11.4, PostgreSQL 17, MySQL 8.4, SQL Server 2019 ([MDL-86887](https://tracker.moodle.org/browse/MDL-86887)). Beta is `$version = 2026091600.00`, branch `503`.
+- **Classic theme removed:** settings migrate to Boost; re-parent Classic child themes or install Classic first ([MDL-88351](https://tracker.moodle.org/browse/MDL-88351)).
+- **Now fatal:** `FEATURE_GROUPMEMBERSONLY` true blocks install/upgrade ([MDL-83231](https://tracker.moodle.org/browse/MDL-83231)); legacy `external_*()` functions throw ([MDL-76583](https://tracker.moodle.org/browse/MDL-76583)); `set_main_table()` needs an alias ([MDL-88397](https://tracker.moodle.org/browse/MDL-88397)); `duration` `defaultunit` must be in `units` ([MDL-89434](https://tracker.moodle.org/browse/MDL-89434)).
+- **Behaviour:** report columns sortable by default ([MDL-87404](https://tracker.moodle.org/browse/MDL-87404)); `queue_adhoc_task(..., true)` returns an existing id ([MDL-86422](https://tracker.moodle.org/browse/MDL-86422)); `marker_updated` event not fired ([MDL-87709](https://tracker.moodle.org/browse/MDL-87709)); AI token columns moved to `ai_action_register` ([MDL-89123](https://tracker.moodle.org/browse/MDL-89123)); quiz reports must call `print_action_bar()` ([MDL-81096](https://tracker.moodle.org/browse/MDL-81096)).
+- **Deprecated:** `user/lib.php` functions → `\core\user::*` ([MDL-82650](https://tracker.moodle.org/browse/MDL-82650)); global `\external_*` names ([MDL-81225](https://tracker.moodle.org/browse/MDL-81225)); `get_return_section()`/`'sr'` → `get_page_section()`/`'pagesectionid'` ([MDL-86284](https://tracker.moodle.org/browse/MDL-86284)); `add_navitem()` → `add_menu_item()` ([MDL-88938](https://tracker.moodle.org/browse/MDL-88938)); `NO_MOODLE_COOKIES` checks → `\core\session\manager::supports_cookies()` ([MDL-87174](https://tracker.moodle.org/browse/MDL-87174)).
+- Full 5.3 catalogue: `moodle-5-3-changes`.
+
 Always check `/public/lib/upgrade.txt` (path changed in 5.1) and per-component `UPGRADING.md` for the target version.
 
 ## upgrade.txt convention
@@ -3290,6 +4825,7 @@ phpstan analyse local/example --level=5
 - upgrade.txt format: https://moodledev.io/general/development/policies/codingstyle#upgrade
 - Hooks API: https://moodledev.io/docs/apis/core/hooks
 - Per-version notes: https://moodledev.io/general/releases
+- See also: `moodle-field-lessons` (generalized field lessons for this area)
 
 
 ---
@@ -3440,6 +4976,14 @@ Skipping any of (1)-(3) is a security bug.
 
 For 4.2+ compatibility wrappers, see `lib/classes/external/`.
 
+**Moodle 5.3 (beta — re-verify at 5.3.0):**
+- **Breaking:** global `\external_api`, `\external_value` etc. emit renamed-class notices and `external_format_string()`, `external_generate_token()` etc. throw; `use core_external\...` and `\core_external\util::*` ([MDL-81225](https://tracker.moodle.org/browse/MDL-81225), [MDL-76583](https://tracker.moodle.org/browse/MDL-76583)).
+- **Breaking:** `login/token.php` is POST-only for credentials and `appsitecheck` is removed ([MDL-87010](https://tracker.moodle.org/browse/MDL-87010)).
+- Build mod `get_*_by_courses` returns from `helper_for_get_mods_by_courses::standard_coursemodule_elements_returns()` ([MDL-87241](https://tracker.moodle.org/browse/MDL-87241)).
+- Exporter strings use numeric entities (`&#38;`), also 5.2.2+ ([MDL-79755](https://tracker.moodle.org/browse/MDL-79755)); `'allowcorsrequests' => true` for nologin AJAX only ([MDL-87150](https://tracker.moodle.org/browse/MDL-87150)).
+- REST routes: OAuth2 scopes `#[scopeset]`/`#[unscoped_resource]` ([MDL-89089](https://tracker.moodle.org/browse/MDL-89089)); tokens via `\core\api\token_manager` ([MDL-87706](https://tracker.moodle.org/browse/MDL-87706)); OAuth2 server depends on `league/oauth2-server` via Composer, so run `composer install` ([MDL-88457](https://tracker.moodle.org/browse/MDL-88457); status checked via `\core\composer`, [MDL-88576](https://tracker.moodle.org/browse/MDL-88576)).
+- Full 5.3 catalogue: `moodle-5-3-changes`.
+
 ## Parameter types (PARAM_*)
 
 | Constant | Use |
@@ -3576,6 +5120,7 @@ $this->assertCount(2, $result);
 - Calling from JS: https://moodledev.io/docs/apis/subsystems/external/writing-a-service#calling-from-javascript
 - File uploads: https://moodledev.io/docs/apis/subsystems/external/files
 - Token API: https://moodledev.io/docs/apis/subsystems/external/security
+- See also: `moodle-field-lessons` (generalized field lessons for this area)
 
 
 ---

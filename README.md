@@ -149,6 +149,12 @@ Other clients: see [`moodle-mcp` README](https://github.com/SaadRahman01/moodle-
 | `moodle-upgrade-migration` | Cross-version upgrades, deprecations |
 | `moodle-mobile-app` | Mobile app remote templates, addons |
 | `moodle-hooks-api` | 4.4+ Hooks API: authoring, listening, migrating magic callbacks |
+| `moodle-5-3-changes` | Upgrading to / targeting Moodle 5.3 (beta-based): breaking changes, deprecations, full catalogue |
+| `moodle-field-lessons` | Non-obvious pitfalls learned from shipping real plugins |
+| `moodle-release-preflight` | Pre-release security/quality checklist of commonly caught defect classes |
+| `moodle-ci-matrix` | moodle-plugin-ci workflow with a verified Moodle × PHP × DB matrix |
+| `moodle-definition-of-done` | Definition-of-done checklist before calling plugin work complete |
+| `moodle-plugin-release` | Version/release numbers, release notes, tagging, Plugins directory publishing |
 
 ### Slash commands
 

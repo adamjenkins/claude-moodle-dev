@@ -259,9 +259,15 @@ Site admin > Users > Privacy and policies > Plugin privacy registry. Lists every
 | `delete_data_for_all_users_in_context` not honoring context level | Always check `$context->contextlevel` first |
 | Missing in plugin directory review | All providers required for moodle.org listing |
 
+## Moodle 5.3 notes (beta — re-verify at 5.3.0)
+
+- Boost's experimental colour mode stores user preference `theme_boost_colourmode` (declared via `add_user_preference()` and exported in `theme_boost\privacy\provider::export_user_preferences()`) and mirrors it into a cookie of the same name; list it in site cookie notices ([MDL-68037](https://tracker.moodle.org/browse/MDL-68037)).
+- Full 5.3 catalogue: `moodle-5-3-changes`.
+
 ## References
 
 - Privacy API: https://moodledev.io/docs/apis/subsystems/privacy
 - Implementing the API: https://moodledev.io/docs/apis/subsystems/privacy/api
 - Subsystems: https://moodledev.io/docs/apis/subsystems/privacy/api#subsystems
 - Testing: https://moodledev.io/docs/apis/subsystems/privacy/api#testing
+- See also: `moodle-field-lessons` (generalized field lessons for this area)

@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "moodle-dev",
-      "description": "13 skills + 8 commands + 2 agents for Moodle plugin scaffolding, XMLDB, web services, Hooks API, AMD/JS, PHPUnit, Behat, security, privacy, performance, accessibility, themes, mobile app, capability auditing, mustache linting, and cross-version upgrades. Pairs with the moodle-mcp companion server for live moodledev.io documentation lookups.",
+      "description": "19 skills + 8 commands + 2 agents for Moodle plugin scaffolding, XMLDB, web services, Hooks API, AMD/JS, PHPUnit, Behat, security, privacy, performance, accessibility, themes, mobile app, capability auditing, mustache linting, and cross-version upgrades. Pairs with the moodle-mcp companion server for live moodledev.io documentation lookups.",
       "source": "./",
       "version": "0.5.0",
       "category": "development",

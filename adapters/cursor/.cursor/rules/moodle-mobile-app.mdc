@@ -273,6 +273,14 @@ Bumping `'version' => N` in `db/mobile.php` invalidates app's cached styles.
 | Not bumping styles `version` | App keeps old CSS |
 | Calling `fetch()` directly | Use `CoreSitesProvider` — handles auth + tokens |
 
+## Moodle 5.3 notes (beta — re-verify at 5.3.0)
+
+- **Breaking:** `login/token.php` rejects credentials in the query string (POST only), checks the service before authenticating, and drops `appsitecheck` ([MDL-87010](https://tracker.moodle.org/browse/MDL-87010)).
+- Deep-link auto-login (token/privatetoken) needs `tool_mobile/enabledeeplinkautologin`, default off ([MDL-88924](https://tracker.moodle.org/browse/MDL-88924)).
+- Course-module web services return the standard cm fields (`lang`, `section`, `visible`, `groupmode`, `groupingid`); build `get_*_by_courses` returns from `helper_for_get_mods_by_courses::standard_coursemodule_elements_returns()` ([MDL-87241](https://tracker.moodle.org/browse/MDL-87241)).
+- New `mod_forum_set_read_state` ([MDL-87887](https://tracker.moodle.org/browse/MDL-87887)); `gradereport_user_get_grade_items` adds optional `parentcategoryid` ([MDL-64304](https://tracker.moodle.org/browse/MDL-64304)).
+- Full 5.3 catalogue: `moodle-5-3-changes`.
+
 ## References
 
 - Mobile addons: https://moodledev.io/general/app/development/plugins-development-guide
@@ -281,3 +289,4 @@ Bumping `'version' => N` in `db/mobile.php` invalidates app's cached styles.
 - Offline support: https://moodledev.io/general/app/development/plugins-development-guide/offline
 - Push notifications: https://moodledev.io/general/app/development/plugins-development-guide/notifications
 - App source: https://github.com/moodlehq/moodleapp
+- See also: `moodle-field-lessons` (generalized field lessons for this area)

@@ -5,6 +5,22 @@ All notable changes to `moodle-dev` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `moodle-5-3-changes` skill — Moodle 5.3 developer digest (breaking changes, deprecations with replacements, new capabilities, upgrade checklist) plus `reference.md`, a full per-component catalogue of the 5.3 upgrade notes with MDL links. Based on 5.3beta (Build 20260916); to be re-verified at 5.3.0.
+- `moodle-field-lessons` skill — pitfalls learned from shipping real plugins (escaping, forms, backup/restore, course lifecycle, testing, CI, versioning), with an overflow `reference.md`.
+- `moodle-release-preflight` skill — pre-release security/quality checklist of defect classes that external plugin reviews repeatedly catch.
+- `moodle-ci-matrix` skill — moodle-plugin-ci GitHub Actions workflow with a verified-compatible Moodle × PHP × DB matrix.
+- `moodle-definition-of-done` skill — definition-of-done checklist for Moodle plugin work.
+- `moodle-plugin-release` skill — `version` vs `release`, release notes, annotated tags, Plugins directory publishing workflow, post-push ingestion checks.
+
+### Changed
+
+- Existing skills gain short "Moodle 5.3 notes" sections (beta) and a pointer to `moodle-field-lessons`; `moodle-upgrade-migration` gains a 5.3 section; `moodle-plugin-development` notes the 5.3 beta version number.
+- Regenerated `adapters/`.
+
 ## [0.5.0] - 2026-06-06
 
 ### Added

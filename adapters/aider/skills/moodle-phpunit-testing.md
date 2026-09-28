@@ -224,9 +224,18 @@ Avoid replacing the global `$DB` — breaks isolation.
     vendor/bin/phpunit --testsuite ${{ matrix.suite }}
 ```
 
+## Moodle 5.3 notes (beta — re-verify at 5.3.0)
+
+- Exporter/web-service strings use numeric entities (`&#38;` not `&amp;`), also 5.2.2+: update assertions ([MDL-79755](https://tracker.moodle.org/browse/MDL-79755)).
+- `admin/tool/phpunit/cli/util.php` gains `--snapshot[=NAME]`, `--restore=NAME` and `--upgrade`, so CI can restore a cached core install and upgrade in the plugin ([MDL-88495](https://tracker.moodle.org/browse/MDL-88495)).
+- Password/auth functions delegate to DI classes `\core\authentication\password` and `\core\authentication`, mockable via `\core\di::set()` ([MDL-88580](https://tracker.moodle.org/browse/MDL-88580)); `#[\DI\Attribute\Inject]` properties are filled by `\core\di::get()`/`make()` ([MDL-89528](https://tracker.moodle.org/browse/MDL-89528)).
+- `route_testcase` adds `assert_route_is_scoped()`, `assert_route_is_unscoped()`, `assert_route_required_scopes()` ([MDL-89089](https://tracker.moodle.org/browse/MDL-89089)).
+- Full 5.3 catalogue: `moodle-5-3-changes`.
+
 ## References
 
 - PHPUnit in Moodle: https://moodledev.io/general/development/tools/phpunit
 - Data generators: https://moodledev.io/docs/apis/subsystems/testing/generators
 - Test writing guide: https://moodledev.io/general/development/policies/testing
 - Coverage: https://moodledev.io/general/development/tools/phpunit#code-coverage
+- See also: `moodle-field-lessons` (generalized field lessons for this area)

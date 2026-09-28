@@ -1,5 +1,5 @@
 ---
-description: Use when upgrading a Moodle plugin across versions, fixing deprecated API usage, or migrating to Moodle 4.x/5.x (incl. 5.1/5.2) conventions — print_error, add_to_log, formslib changes, external_api namespace, Hooks API, /public doc-root, Routing Engine, PSR-4 migration, PHP 8.1–8.4 upgrades, and required upgrade.txt notes.
+description: Use when upgrading a Moodle plugin across versions, fixing deprecated API usage, or migrating to Moodle 4.x/5.x (incl. 5.1/5.2/5.3) conventions — print_error, add_to_log, formslib changes, external_api namespace, Hooks API, /public doc-root, Routing Engine, PSR-4 migration, PHP 8.1–8.4 upgrades, and required upgrade.txt notes.
 tools: ['codebase', 'search', 'editFiles', 'runCommands']
 ---
 # Moodle Upgrade & Migration
@@ -197,6 +197,15 @@ class content extends \core_courseformat\output\local\content { /* ... */ }
   - Everything in `lib/deprecatedlib.php` from ≤ 4.4 removed
 - New/expanded web services: `site_info`, `mobile_config`, `choice_results`.
 
+### 5.3 (beta — re-verify at 5.3.0)
+
+- **Requirements:** upgrade from 4.4+; PHP 8.3 min; MariaDB 11.4, PostgreSQL 17, MySQL 8.4, SQL Server 2019 ([MDL-86887](https://tracker.moodle.org/browse/MDL-86887)). Beta is `$version = 2026091600.00`, branch `503`.
+- **Classic theme removed:** settings migrate to Boost; re-parent Classic child themes or install Classic first ([MDL-88351](https://tracker.moodle.org/browse/MDL-88351)).
+- **Now fatal:** `FEATURE_GROUPMEMBERSONLY` true blocks install/upgrade ([MDL-83231](https://tracker.moodle.org/browse/MDL-83231)); legacy `external_*()` functions throw ([MDL-76583](https://tracker.moodle.org/browse/MDL-76583)); `set_main_table()` needs an alias ([MDL-88397](https://tracker.moodle.org/browse/MDL-88397)); `duration` `defaultunit` must be in `units` ([MDL-89434](https://tracker.moodle.org/browse/MDL-89434)).
+- **Behaviour:** report columns sortable by default ([MDL-87404](https://tracker.moodle.org/browse/MDL-87404)); `queue_adhoc_task(..., true)` returns an existing id ([MDL-86422](https://tracker.moodle.org/browse/MDL-86422)); `marker_updated` event not fired ([MDL-87709](https://tracker.moodle.org/browse/MDL-87709)); AI token columns moved to `ai_action_register` ([MDL-89123](https://tracker.moodle.org/browse/MDL-89123)); quiz reports must call `print_action_bar()` ([MDL-81096](https://tracker.moodle.org/browse/MDL-81096)).
+- **Deprecated:** `user/lib.php` functions → `\core\user::*` ([MDL-82650](https://tracker.moodle.org/browse/MDL-82650)); global `\external_*` names ([MDL-81225](https://tracker.moodle.org/browse/MDL-81225)); `get_return_section()`/`'sr'` → `get_page_section()`/`'pagesectionid'` ([MDL-86284](https://tracker.moodle.org/browse/MDL-86284)); `add_navitem()` → `add_menu_item()` ([MDL-88938](https://tracker.moodle.org/browse/MDL-88938)); `NO_MOODLE_COOKIES` checks → `\core\session\manager::supports_cookies()` ([MDL-87174](https://tracker.moodle.org/browse/MDL-87174)).
+- Full 5.3 catalogue: `moodle-5-3-changes`.
+
 Always check `/public/lib/upgrade.txt` (path changed in 5.1) and per-component `UPGRADING.md` for the target version.
 
 ## upgrade.txt convention
@@ -319,3 +328,4 @@ phpstan analyse local/example --level=5
 - upgrade.txt format: https://moodledev.io/general/development/policies/codingstyle#upgrade
 - Hooks API: https://moodledev.io/docs/apis/core/hooks
 - Per-version notes: https://moodledev.io/general/releases
+- See also: `moodle-field-lessons` (generalized field lessons for this area)

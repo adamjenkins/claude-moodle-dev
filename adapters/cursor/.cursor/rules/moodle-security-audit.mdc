@@ -278,6 +278,15 @@ phpcs --standard=moodle local/example
 
 Found a bug in Moodle core? **Don't open a public issue.** Email `security@moodle.org` per the [Moodle security policy](https://moodle.org/security/).
 
+## Moodle 5.3 notes (beta — re-verify at 5.3.0)
+
+- **Breaking:** `login/token.php` is POST-only for credentials (query string throws), checks the service before auth, and drops `appsitecheck` ([MDL-87010](https://tracker.moodle.org/browse/MDL-87010)).
+- `'allowcorsrequests' => true` in `db/services.php` sends `Access-Control-Allow-Origin: *` for nologin AJAX; set it only on `loginrequired => false` functions safe cross-origin ([MDL-87150](https://tracker.moodle.org/browse/MDL-87150)).
+- REST API: personal access tokens via `\core\api\token_manager` and `moodle/api:createtoken` ([MDL-87706](https://tracker.moodle.org/browse/MDL-87706)); a route with neither `#[scopeset]` nor `#[unscoped_resource]` has no scope restriction, so annotate every route ([MDL-89089](https://tracker.moodle.org/browse/MDL-89089)).
+- `\core\di::get(\core_auth\validate_user::class)` centralises pre-login checks: `validate_before_external_login($user)` (maintenance, deleted, unconfirmed, suspended, auth disabled, expired credentials), `validate_before_token_login($user)`, `validate_before_web_login($user)` (suspended and auth-disabled only) ([MDL-88580](https://tracker.moodle.org/browse/MDL-88580)).
+- HTMLPurifier now allows `<details>`/`<summary>` ([MDL-88618](https://tracker.moodle.org/browse/MDL-88618)); deep-link auto-login is off by default ([MDL-88924](https://tracker.moodle.org/browse/MDL-88924)).
+- Full 5.3 catalogue: `moodle-5-3-changes`.
+
 ## References
 
 - Security overview: https://moodledev.io/general/development/policies/security
@@ -286,3 +295,4 @@ Found a bug in Moodle core? **Don't open a public issue.** Email `security@moodl
 - File API: https://moodledev.io/docs/apis/subsystems/files
 - DML placeholders: https://moodledev.io/docs/apis/core/dml#placeholders
 - Reporting security: https://moodle.org/security/
+- See also: `moodle-field-lessons` (generalized field lessons for this area)

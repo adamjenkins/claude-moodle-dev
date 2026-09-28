@@ -293,6 +293,18 @@ php admin/cli/purge_caches.php
 php admin/cli/build_theme_css.php --themes=yourtheme
 ```
 
+## Moodle 5.3 notes (beta — re-verify at 5.3.0)
+
+- **Breaking:** Classic removed; upgrade migrates its settings to Boost. Re-parent Classic child themes (or install Classic) before upgrading ([MDL-88351](https://tracker.moodle.org/browse/MDL-88351)).
+- **Breaking templates:** `theme_boost/drawer` `{{$drawerheadercontent}}` → `{{$drawercontrols}}` ([MDL-89050](https://tracker.moodle.org/browse/MDL-89050)); course-index `cm`/`section` ARIA moved, override both ([MDL-88949](https://tracker.moodle.org/browse/MDL-88949)); collapse-all toggle moved to `core_courseformat/local/content` ([MDL-88410](https://tracker.moodle.org/browse/MDL-88410)); block_timeline is React with no renderer/templates ([MDL-88287](https://tracker.moodle.org/browse/MDL-88287)).
+- **Dark mode (experimental):** Boost sets `data-bs-theme` on `<html>`; use `--bs-*`/`--mds-*` variables, keep `scss/moodle/dark.scss` the last import, output `\theme_boost\colour_mode::render_menu()` in custom navbars ([MDL-68037](https://tracker.moodle.org/browse/MDL-68037)).
+- **Nav markup:** primary/secondary nav are React `NavPill` (`.mds-nav-pill`, not `.nav-link`/`.moremenu`); navbar overrides should include `core/primarymoremenu` ([MDL-87830](https://tracker.moodle.org/browse/MDL-87830), [MDL-89294](https://tracker.moodle.org/browse/MDL-89294)).
+- **Moved templates:** `core/loginform` now in core, re-diff overrides ([MDL-89196](https://tracker.moodle.org/browse/MDL-89196)); modal title is `<h2 class="modal-title fs-5">` ([MDL-75699](https://tracker.moodle.org/browse/MDL-75699)); grade action bars use `core/navigation_action_bar`/`core/action_bar` ([MDL-81096](https://tracker.moodle.org/browse/MDL-81096)); `core/external_content_banner` deprecated ([MDL-89290](https://tracker.moodle.org/browse/MDL-89290)).
+- **Admin renderer:** override `notifications_page()` instead of `admin_notifications_page()`; drop banner-method overrides ([MDL-89290](https://tracker.moodle.org/browse/MDL-89290)); `upgradekey_form_page()` → `upgradekey_form_page_with_validation($url, false)` ([MDL-87896](https://tracker.moodle.org/browse/MDL-87896)).
+- **Fonts:** default is self-hosted Noto Sans; override `$font-family-sans-serif` to keep system fonts ([MDL-88412](https://tracker.moodle.org/browse/MDL-88412)).
+- **JS:** import from `'bootstrap'`, not `theme_boost/bootstrap/*`; exception: `util`/`dom` helpers still load directly (`bootstrap/dom/event-handler` on 5.3+) ([MDL-88766](https://tracker.moodle.org/browse/MDL-88766)).
+- Full 5.3 catalogue: `moodle-5-3-changes`.
+
 ## References
 
 - Themes: https://moodledev.io/docs/apis/plugintypes/theme
@@ -301,3 +313,4 @@ php admin/cli/build_theme_css.php --themes=yourtheme
 - Layouts: https://moodledev.io/docs/apis/plugintypes/theme/layouts
 - Theme settings: https://moodledev.io/docs/apis/plugintypes/theme/settings
 - Override templates: https://moodledev.io/docs/apis/subsystems/output/templates#overriding-templates
+- See also: `moodle-field-lessons` (generalized field lessons for this area)

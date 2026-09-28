@@ -61,7 +61,7 @@ defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'local_example';      // frankenstyle, must match dir
 $plugin->version   = 2026042500;           // YYYYMMDDXX, bump on any db/capability change
-$plugin->requires  = 2024100700;           // min Moodle version (4.5 LTS); use 2025041400 for 5.0+, 2025100600 for 5.1+, 2026042000 for 5.2+
+$plugin->requires  = 2024100700;           // min Moodle version (4.5 LTS); use 2025041400 for 5.0+, 2025100600 for 5.1+, 2026042000 for 5.2+; 5.3beta is 2026091600 (beta only, 5.3.0 value TBD)
 $plugin->release   = '1.0.0';
 $plugin->maturity  = MATURITY_STABLE;      // ALPHA | BETA | RC | STABLE
 $plugin->dependencies = ['mod_quiz' => 2024100700];  // optional
@@ -264,6 +264,18 @@ vendor/bin/phpcs --standard=moodle local/example
 - PHPUnit: `tests/<thing>_test.php` extending `advanced_testcase`, use `$this->resetAfterTest()`, generators via `self::getDataGenerator()->get_plugin_generator('local_example')`
 - Behat: `tests/behat/*.feature` with `@local_example` tag, step definitions in `tests/behat/behat_local_example.php`
 
+## Moodle 5.3 notes (beta — re-verify at 5.3.0)
+
+- **Breaking:** a module returning true for `FEATURE_GROUPMEMBERSONLY` fails install/upgrade; remove the case ([MDL-83231](https://tracker.moodle.org/browse/MDL-83231)).
+- **Breaking (report builder):** `set_main_table()` alias is mandatory ([MDL-88397](https://tracker.moodle.org/browse/MDL-88397)); columns are sortable by default, add `->set_is_sortable(false)` where needed ([MDL-87404](https://tracker.moodle.org/browse/MDL-87404)).
+- **Breaking:** `duration` element throws if `defaultunit` (default `MINSECS`) is not in `units` ([MDL-89434](https://tracker.moodle.org/browse/MDL-89434)); `mod_assign\event\marker_updated` no longer fired, observe `marker_added`/`marker_removed` ([MDL-87709](https://tracker.moodle.org/browse/MDL-87709)); quiz report subplugins must call `$this->print_action_bar(...)` ([MDL-81096](https://tracker.moodle.org/browse/MDL-81096)).
+- **Deprecated:** `user/lib.php` functions → `\core\user::*` (e.g. `\core\user::create_user()`) ([MDL-82650](https://tracker.moodle.org/browse/MDL-82650)); format `get_return_section()` → `get_page_section()`, `get_view_url()` `'sr'` → `'pagesectionid'` ([MDL-86284](https://tracker.moodle.org/browse/MDL-86284)).
+- Check `\core\session\manager::supports_cookies()`, not the `NO_MOODLE_COOKIES` constant ([MDL-87174](https://tracker.moodle.org/browse/MDL-87174)).
+- Course formats returning true from `uses_linear_navigation()` get the prev/next footer on by default unless they add a `format_<name>/enablelinearnav` setting ([MDL-89406](https://tracker.moodle.org/browse/MDL-89406)).
+- Plugin CSS must not assume a light page (experimental dark mode; use `--bs-*` variables) ([MDL-68037](https://tracker.moodle.org/browse/MDL-68037)).
+- New: `before_email_to_user` hook ([MDL-69724](https://tracker.moodle.org/browse/MDL-69724)); `moodle_exception` `previous:` argument ([MDL-88579](https://tracker.moodle.org/browse/MDL-88579)); REST route scopes `#[scopeset]`/`#[unscoped_resource]` ([MDL-89089](https://tracker.moodle.org/browse/MDL-89089)).
+- Full 5.3 catalogue: `moodle-5-3-changes`.
+
 ## References
 
 - Moodle Dev Docs: https://moodledev.io
@@ -272,3 +284,4 @@ vendor/bin/phpcs --standard=moodle local/example
 - XMLDB: https://moodledev.io/docs/apis/core/dml/xmldb
 - Privacy API: https://moodledev.io/docs/apis/subsystems/privacy
 - Hooks API (4.4+): https://moodledev.io/docs/apis/core/hooks
+- See also: `moodle-field-lessons` (generalized field lessons for this area)

@@ -2,15 +2,21 @@ name: moodle-dev
 version: 0.3.0
 schema: v1
 rules:
+  - uses: ./rules/moodle-5-3-changes.md
   - uses: ./rules/moodle-accessibility.md
   - uses: ./rules/moodle-amd-javascript.md
   - uses: ./rules/moodle-behat-testing.md
+  - uses: ./rules/moodle-ci-matrix.md
+  - uses: ./rules/moodle-definition-of-done.md
+  - uses: ./rules/moodle-field-lessons.md
   - uses: ./rules/moodle-hooks-api.md
   - uses: ./rules/moodle-mobile-app.md
   - uses: ./rules/moodle-performance.md
   - uses: ./rules/moodle-phpunit-testing.md
   - uses: ./rules/moodle-plugin-development.md
+  - uses: ./rules/moodle-plugin-release.md
   - uses: ./rules/moodle-privacy-gdpr.md
+  - uses: ./rules/moodle-release-preflight.md
   - uses: ./rules/moodle-security-audit.md
   - uses: ./rules/moodle-theme-development.md
   - uses: ./rules/moodle-upgrade-migration.md
