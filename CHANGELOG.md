@@ -5,7 +5,7 @@ All notable changes to `moodle-dev` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2026-09-28
 
 ### Added
 
@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Existing skills gain short "Moodle 5.3 notes" sections (beta) and a pointer to `moodle-field-lessons`; `moodle-upgrade-migration` gains a 5.3 section; `moodle-plugin-development` notes the 5.3 beta version number.
 - Regenerated `adapters/`.
+- README: fork notice, and install instructions for this branch. It must be pinned with `#wisecat/moodle-5.3`, because the plugin is served from the marketplace checkout (`source: "./"`). Also covers replacing an installed upstream marketplace of the same name, refreshing at the same version, a project-level `extraKnownMarketplaces` entry with `ref`, and local-clone development. Compatibility table gains Moodle 5.3.
+- Version 0.6.0 (`plugin.json`, `marketplace.json`).
 
 ## [0.5.0] - 2026-06-06
 

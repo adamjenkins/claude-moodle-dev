@@ -4,7 +4,7 @@
 > **Native plugin for [Claude Code](https://docs.anthropic.com/claude/docs/claude-code); ships with adapters for [Cursor](adapters/cursor/), [GitHub Copilot](adapters/copilot/), [Aider](adapters/aider/), [Continue](adapters/continue/), and a [paste-anywhere bundle](adapters/generic/PROMPTS.md).**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.6.0-blue.svg)](CHANGELOG.md)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-Plugin-8A2BE2.svg)](https://docs.anthropic.com/claude/docs/claude-code)
 [![Cursor](https://img.shields.io/badge/Cursor-Rules-black.svg)](adapters/cursor/)
 [![Copilot](https://img.shields.io/badge/Copilot-Chatmodes-24292e.svg)](adapters/copilot/)
@@ -15,6 +15,8 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 Scaffolds plugins, writes XMLDB upgrades, audits privacy/security, generates PHPUnit + Behat tests, builds AMD modules, reviews PRs — all following official Moodle coding standards (PSR-4, frankenstyle, MOODLE_INTERNAL, GPL headers, `get_string`, `$DB`).
+
+> 🧭 **You are on the `wisecat/moodle-5.3` branch of a fork** ([adamjenkins/claude-moodle-dev](https://github.com/adamjenkins/claude-moodle-dev), from [SaadRahman01/claude-moodle-dev](https://github.com/SaadRahman01/claude-moodle-dev)). It adds **Moodle 5.3** coverage (based on 5.3beta, to be re-checked at 5.3.0) and six extra skills: `moodle-5-3-changes`, `moodle-field-lessons`, `moodle-release-preflight`, `moodle-ci-matrix`, `moodle-definition-of-done` and `moodle-plugin-release`. **To install this branch in Claude Code you must name the branch**. Without it you get the default branch, which has none of this. See [Install → this branch](#claude-code-this-forks-moodle-53-branch).
 
 > 🔌 **Companion MCP server:** [`moodle-mcp`](https://github.com/SaadRahman01/moodle-mcp) — live `moodledev.io` documentation search inside Claude Desktop / Code, Cursor, Continue, Cline. `pipx install moodle-mcp`.
 
@@ -39,7 +41,72 @@ This plugin teaches Claude all of it. Auto-activates when Claude detects Moodle 
 
 ## Install
 
-### Claude Code (native plugin)
+### Claude Code: this fork's Moodle 5.3 branch
+
+The plugin is served from the marketplace's own git checkout (`"source": "./"` in `.claude-plugin/marketplace.json`). **The branch Claude Code clones is therefore the branch you get.** Pin it with `#<branch>`:
+
+```
+/plugin marketplace add adamjenkins/claude-moodle-dev#wisecat/moodle-5.3
+/plugin install moodle-dev@moodle-dev
+```
+
+From a shell, quote the argument so `#` isn't read as a comment:
+
+```bash
+claude plugin marketplace add 'adamjenkins/claude-moodle-dev#wisecat/moodle-5.3'
+claude plugin install moodle-dev@moodle-dev
+```
+
+The full clone URL works too: `https://github.com/adamjenkins/claude-moodle-dev.git#wisecat/moodle-5.3`. Leaving out `#wisecat/moodle-5.3` installs the default branch, which has **no** 5.3 content.
+
+**Already have the upstream plugin installed?** Both marketplaces are named `moodle-dev`, and Claude Code allows only one marketplace per name. Remove the old one first:
+
+```
+/plugin marketplace remove moodle-dev
+/plugin marketplace add adamjenkins/claude-moodle-dev#wisecat/moodle-5.3
+/plugin install moodle-dev@moodle-dev
+```
+
+**Check it worked:** `/plugin list` shows `moodle-dev@moodle-dev`, and the skill list includes `moodle-5-3-changes`. Nineteen skills in total; upstream has thirteen.
+
+**Getting later commits from the branch:** `claude plugin update` compares version numbers, and commits on this branch don't always bump the version. It may answer "already at the latest version" while the branch has moved on. To be sure you have the latest commit, refresh the marketplace and reinstall:
+
+```
+/plugin marketplace update moodle-dev
+/plugin uninstall moodle-dev@moodle-dev
+/plugin install moodle-dev@moodle-dev
+```
+
+**For a whole team or project,** declare the pinned marketplace in `.claude/settings.json`:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "moodle-dev": {
+      "source": {
+        "source": "github",
+        "repo": "adamjenkins/claude-moodle-dev",
+        "ref": "wisecat/moodle-5.3"
+      }
+    }
+  }
+}
+```
+
+**Working on the skills themselves?** Use a local clone that has the branch checked out. A local-directory marketplace loads the plugin in place from the working tree. Whatever branch is checked out is what Claude sees, and edits apply at the next session start or `/reload-plugins`.
+
+```bash
+git clone -b wisecat/moodle-5.3 https://github.com/adamjenkins/claude-moodle-dev.git
+# then, in Claude Code:
+/plugin marketplace add /absolute/path/to/claude-moodle-dev
+/plugin install moodle-dev@moodle-dev
+```
+
+After a `git pull` (or a `git switch` to another branch), run `/reload-plugins`.
+
+The non-Claude adapters (`install.sh`, below) copy from your checkout too, so clone with `-b wisecat/moodle-5.3` before running them.
+
+### Claude Code: upstream (native plugin)
 
 ```
 /plugin marketplace add https://github.com/SaadRahman01/claude-moodle-dev
@@ -270,6 +337,7 @@ SECURITY.md                 # vulnerability disclosure policy
 
 | Moodle | Status |
 |--------|--------|
+| 5.3    | supported on this branch: `moodle-5-3-changes` plus 5.3 notes in every skill. Based on 5.3beta (Build 20260916): PHP 8.3 min, MariaDB 11.4 / PostgreSQL 17 / MySQL 8.4, upgrade from 4.4+, React navigation, dark colour mode. Re-check at 5.3.0 |
 | 5.2    | supported (PHP 8.3 min, `/public` doc-root, React core, Oracle dropped — releases 2026-04-20) |
 | 5.1    | supported (PHP 8.2 min, `/public` doc-root introduced, Routing Engine) |
 | 5.0    | supported |
@@ -321,6 +389,7 @@ Code Claude generates with these skills should ship as **GPL-3.0-or-later** to b
 ## Credits
 
 Built by [Saad Rahman](https://github.com/SaadRahman01). 
+Moodle 5.3 branch (`wisecat/moodle-5.3`) and the field-lessons and release skills maintained in the [adamjenkins/claude-moodle-dev](https://github.com/adamjenkins/claude-moodle-dev) fork. 
 Powered by [Claude Code](https://docs.anthropic.com/claude/docs/claude-code) and the [Moodle Developer Documentation](https://moodledev.io).
 
 If this saves you time, ⭐ the repo — helps others find it.
