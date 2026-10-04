@@ -254,6 +254,18 @@ privacy)? If CI runs test steps over an empty `tests/`, say so.
   Fail it if the file is missing, named differently only (`LICENSE.md`, `COPYING`), untracked, a stub
   pointing elsewhere, a different licence from the one the headers declare, or export-ignored. Third-party
   notices (a `LICENSES/` folder, `thirdpartylibs.xml` entries) are in addition to it, not instead.
+- **Only the English language pack ships.** A Plugins directory (Marketplace) release carries `lang/en/`
+  only; other languages are contributed through AMOS and arrive with Moodle's language packs. Keep
+  translations (`lang/ja/` and the like) out of the repository, e.g. in the developer's own notes, and
+  check both the working tree and the release tag:
+
+  ```bash
+  git ls-files lang | grep -v '^lang/en/'                         # must print nothing
+  git ls-tree -r --name-only vX.Y.Z -- lang | grep -v '^lang/en/'   # the tag about to be submitted
+  ```
+
+  Fail it on any other language folder. An `export-ignore` line does not count as a pass: the tag
+  itself must not carry it, since some installers fetch the tagged tree rather than the ZIP.
 - Timezones: passing another user's raw `timezone` field (the `99` "server
   default" sentinel) to `get_user_timezone()` or `core_date::get_user_timezone()`
   resolves to the *viewer's* zone — use `core_date::get_server_timezone()` for
@@ -275,6 +287,7 @@ privacy)? If CI runs test steps over an empty `tests/`, say so.
 | Reset hook without form definition/defaults | Reset option never shown | Implement the full triad |
 | "CI is green" as evidence | Empty `tests/` passes vacuously | List the tests that cover each sink |
 | No root `LICENSE`, or only `LICENSE.md`/`COPYING`, or export-ignored | The GPL text must ship with the code | Track the full GPLv3 text as `LICENSE`; keep it out of export-ignore |
+| `lang/ja/` (or any non-English pack) in the release | The Plugins directory takes `lang/en` only; translations go through AMOS | Keep only `lang/en/` in the repo and the tag |
 
 ## Report format
 
