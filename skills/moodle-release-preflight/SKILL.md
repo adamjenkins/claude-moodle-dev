@@ -241,6 +241,19 @@ privacy)? If CI runs test steps over an empty `tests/`, say so.
   `@copyright` holder, `TODO` package names) — grep for them.
 - `version.php` `$plugin->requires` not below the lowest branch in
   `$plugin->supported`.
+- **A `LICENSE` file at the repository root**, holding the full text of the licence the plugin declares
+  (GPL-3.0-or-later for a Moodle plugin: the GNU GPL version 3 text). It must be tracked and must ship in
+  the distribution ZIP, so check all three:
+
+  ```bash
+  git ls-files --error-unmatch LICENSE                  # tracked (a README link or LICENSE.md alone is not enough)
+  grep -q 'Version 3, 29 June 2007' LICENSE              # the GPLv3 text, matching the file headers and composer.json
+  git check-attr export-ignore -- LICENSE                # must NOT say "set": export-ignore drops it from the ZIP
+  ```
+
+  Fail it if the file is missing, named differently only (`LICENSE.md`, `COPYING`), untracked, a stub
+  pointing elsewhere, a different licence from the one the headers declare, or export-ignored. Third-party
+  notices (a `LICENSES/` folder, `thirdpartylibs.xml` entries) are in addition to it, not instead.
 - Timezones: passing another user's raw `timezone` field (the `99` "server
   default" sentinel) to `get_user_timezone()` or `core_date::get_user_timezone()`
   resolves to the *viewer's* zone — use `core_date::get_server_timezone()` for
@@ -261,6 +274,7 @@ privacy)? If CI runs test steps over an empty `tests/`, say so.
 | Provider tests absent | Renamed tables break export/erase silently | Test with generated rows |
 | Reset hook without form definition/defaults | Reset option never shown | Implement the full triad |
 | "CI is green" as evidence | Empty `tests/` passes vacuously | List the tests that cover each sink |
+| No root `LICENSE`, or only `LICENSE.md`/`COPYING`, or export-ignored | The GPL text must ship with the code | Track the full GPLv3 text as `LICENSE`; keep it out of export-ignore |
 
 ## Report format
 
