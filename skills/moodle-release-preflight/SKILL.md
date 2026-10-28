@@ -1,6 +1,6 @@
 ---
 name: moodle-release-preflight
-description: Use when about to release a Moodle plugin, submit it to the Moodle Plugins directory, or send it for an external security review, or when reviewing security-relevant changes before a tag. A pre-release checklist of defect classes that real Marketplace and security reviews repeatedly caught in shipped plugins despite green CI — client-trusted ids, client-only limits, inline-served uploads, unescaped output sinks, unclean restore, privacy provider drift, incomplete course reset/uninstall, vacuous tests, and minor gates. Skip when writing new feature code or doing a general security audit (use moodle-security-audit).
+description: Use when about to release a Moodle plugin, submit it to the Moodle Plugins directory, or send it for an external security review, or when reviewing security-relevant changes before a tag. A pre-release checklist of defect classes that real Marketplace and security reviews repeatedly caught in shipped plugins despite green CI — client-trusted ids, client-only limits, inline-served uploads, unescaped output sinks, unclean restore, privacy provider drift, incomplete course reset/uninstall, vacuous tests, minor gates, and an extended checklist (SQL from mobile args, unserialize, IDOR, CSRF, noclean, SSRF, group leaks). Skip when writing new feature code or doing a general security audit (use moodle-security-audit).
 ---
 
 # Moodle Release Preflight
@@ -41,7 +41,8 @@ deliverable is the report — do not fix unless asked.
   typically N/A**; focus on **4, 6, 8, 9**. Prove N/A with a grep (no
   `required_param`, `send_stored_file`, or `backup/` dir) — don't assume.
 - **`mod_`, `assignsubmission_`/`assignfeedback_`, anything with an upload
-  endpoint, external functions, or its own tables** — run **all nine**.
+  endpoint, external functions, or its own tables** — run **all nine**, then
+  class 10.
 - **`local_`, `tool_`, `report_`** — a `local_` with an AJAX endpoint and a
   table is activity-shaped (run all); a passive one is editor-shaped.
 
@@ -272,6 +273,18 @@ privacy)? If CI runs test steps over an empty `tests/`, say so.
   that case. JS wall-clock-to-timestamp by diffing offsets is off
   by the DST amount inside a transition window.
 
+## 10. Extended security checklist
+
+**Seen in a wider audit:** classes 1–9 come from reviews of a small set of
+plugins. A static audit of several dozen widely installed third-party plugins
+found more: SQL from mobile `$args`, `unserialize()` of restored data, IDOR and
+client-supplied `userid`, GET-without-sesskey writes, `noclean` on student or LLM
+text, SSRF through PDF renderers, and SEPARATEGROUPS leaks.
+
+Check: for any plugin with request entry points, walk the checklist at the end
+of [reference.md](reference.md) and report each line as pass / fail / N/A.
+Do it after classes 1–9; where the two overlap, report the finding once.
+
 ## Common mistakes
 
 | Mistake | Why it fails review | Fix |
@@ -291,8 +304,9 @@ privacy)? If CI runs test steps over an empty `tests/`, say so.
 
 ## Report format
 
-A short table: class → pass / fail / N/A → evidence. List each fail with
-file:line and the fix pattern. Do not fix unless asked.
+A short table: class → pass / fail / N/A → evidence, with class 10 as one row
+per reference.md checklist group. List each fail with file:line and the fix
+pattern. Do not fix unless asked.
 
 ## Extending this checklist
 

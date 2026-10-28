@@ -5,6 +5,12 @@ All notable changes to `moodle-dev` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `moodle-release-preflight`: class 10 and `reference.md`, an extended security checklist (injection, output, CSRF, authorisation, outbound requests, resource abuse, lifecycle). It comes from a static audit of several dozen widely installed third-party plugins, and its examples are described as patterns only.
+
 ## [0.6.0] - 2026-09-28
 
 ### Added
