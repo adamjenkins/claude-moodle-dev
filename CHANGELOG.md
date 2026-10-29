@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `moodle-release-preflight`: class 11, authored definitions and imports that reach other users (settings read by name, imports landing as drafts, `RISK_XSS` on the authoring capability), and class 1c, overlaying values on a core form's defaults skips its freezes. Class 4 names the core helpers that print their text as HTML (`html_writer::select()` labels, formslib labels, select options and checkbox texts); class 3 greps `send_file()` too; class 9 adds test helpers in production code and English-only admin messages. From an external security review of an admin-tool plugin.
 - `moodle-release-preflight`: class 10 and `reference.md`, an extended security checklist (injection, output, CSRF, authorisation, outbound requests, resource abuse, lifecycle). It comes from a static audit of several dozen widely installed third-party plugins, and its examples are described as patterns only.
 
 ## [0.6.0] - 2026-09-28

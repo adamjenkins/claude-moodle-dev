@@ -3590,7 +3590,7 @@ Site admin > Users > Privacy and policies > Plugin privacy registry. Lists every
 
 ### moodle-release-preflight
 
-> Use when about to release a Moodle plugin, submit it to the Moodle Plugins directory, or send it for an external security review, or when reviewing security-relevant changes before a tag. A pre-release checklist of defect classes that real Marketplace and security reviews repeatedly caught in shipped plugins despite green CI — client-trusted ids, client-only limits, inline-served uploads, unescaped output sinks, unclean restore, privacy provider drift, incomplete course reset/uninstall, vacuous tests, minor gates, and an extended checklist (SQL from mobile args, unserialize, IDOR, CSRF, noclean, SSRF, group leaks). Skip when writing new feature code or doing a general security audit (use moodle-security-audit).
+> Use when about to release a Moodle plugin, submit it to the Moodle Plugins directory, or send it for an external security review, or when reviewing security-relevant changes before a tag. A pre-release checklist of defect classes that real Marketplace and security reviews repeatedly caught in shipped plugins despite green CI — client-trusted ids, client-only limits, inline-served uploads, unescaped output sinks, unclean restore, privacy provider drift, incomplete course reset/uninstall, vacuous tests, minor gates, an extended checklist (SQL from mobile args, unserialize, IDOR, CSRF, noclean, SSRF, group leaks), and authored definitions or imports that reach other users (settings read by name, drafts). Skip when writing new feature code or doing a general security audit (use moodle-security-audit).
 
 # Moodle Release Preflight
 
@@ -3626,12 +3626,12 @@ deliverable is the report — do not fix unless asked.
 **Triage by plugin shape first.** Decide from the file tree, not the prefix:
 
 - **Editor (`tiny_`/`atto_`), filter, block, theme** — usually no request
-  handlers, uploads, restore, or stored data. Classes **1, 2, 3, 5, 7 are
+  handlers, uploads, restore, or stored data. Classes **1, 2, 3, 5, 7, 11 are
   typically N/A**; focus on **4, 6, 8, 9**. Prove N/A with a grep (no
   `required_param`, `send_stored_file`, or `backup/` dir) — don't assume.
 - **`mod_`, `assignsubmission_`/`assignfeedback_`, anything with an upload
   endpoint, external functions, or its own tables** — run **all nine**, then
-  class 10.
+  classes 10 and 11.
 - **`local_`, `tool_`, `report_`** — a `local_` with an AJAX endpoint and a
   table is activity-shaped (run all); a passive one is editor-shaped.
 
@@ -3696,6 +3696,20 @@ Fix: a **distinct** value per actor (e.g. `hidden_by_moderator`, which the autho
 refuses to touch), or store the actor on the row. Confirm the privileged action
 is still reversible through the UI afterwards.
 
+### 1c. Building a core form's data in code skips its freezes
+
+**Seen in reviews:** a plugin read a core form's defaults, overlaid its own values and saved
+without posting the form. Core had `hardFreeze()`d a capability-gated field for that user
+(`course_edit_form` freezes `downloadcontent` and `visible`), and the overlay set it anyway.
+
+Check: wherever code fills a core form's data itself (`_defaultValues`, `get_data()` from a
+mocked submit, an array passed straight to `create_course()`), does it skip frozen elements and
+take the pinned value from `_constantValues`? `create_course()` and similar APIs check no
+capability of their own.
+
+Fix: skip any element where `$mform->getElement($name)->isFrozen()`, and use core's constant
+for it. Test with a user who lacks the gating capability.
+
 ## 2. Client-side-only limits are advisory
 
 **Seen in reviews:** plugins enforced maximum duration and size only in the
@@ -3714,8 +3728,9 @@ validation, giving stored XSS in the grader's session. Another plugin with the
 same gap was protected only because it forced download.
 
 Check:
-- `grep -rn "send_stored_file(" --include='*.php' .` — the 4th argument is
-  `$forcedownload`. For student files it must be true unless the MIME type is a
+- `grep -rnE "send_(stored_)?file\(" --include='*.php' .` — both serve files inline unless told
+  otherwise (`send_file()` too: a grep for `send_stored_file` alone misses it). The 4th argument
+  of `send_stored_file()` is `$forcedownload`. For student files it must be true unless the MIME type is a
   validated audio/video type.
 - The upload endpoint validates type/extension against an **allowlist** before
   storing — not just `PARAM_FILE` on the name.
@@ -3742,6 +3757,10 @@ Check:
   FAIL. A grep hit is not a finding until the feed is traced.
 - In TinyMCE plugins, `editor.dom.create('div', {}, html)` is a sink; it passes
   only when `html` comes from `Templates.renderForPromise()`.
+- **Core helpers that print their text as HTML:** `html_writer::select()` option labels
+  (`select_option()` puts the label in tag content), and formslib element labels, `select`
+  option texts and `advcheckbox` texts (core's form templates print `{{{label}}}`,
+  `{{{text}}}` and `{{{.}}}` raw). Stored or authored text passed to any of them needs `s()`.
 
 Fix: escape at the point of output — `s($label)` — which neutralises the payload
 however it entered the DB.
@@ -3856,6 +3875,12 @@ privacy)? If CI runs test steps over an empty `tests/`, say so.
 
   Fail it on any other language folder. An `export-ignore` line does not count as a pass: the tag
   itself must not carry it, since some installers fetch the tagged tree rather than the ZIP.
+- **Test helpers in production code.** `moodleform::mock_submit()` replaces `$_POST` and `$_FILES`
+  (and `$_GET` for a GET form); code that uses it outside tests saves and restores all of them
+  in a `finally`. Reflection into protected core members needs a test that fails when they change.
+- **Admin-facing messages in literal English** (validation problems, import reports): reviews flag
+  them. Use language strings with placeholders. Two messages may share a string only when its
+  `{$a}` means the same thing in both.
 - Timezones: passing another user's raw `timezone` field (the `99` "server
   default" sentinel) to `get_user_timezone()` or `core_date::get_user_timezone()`
   resolves to the *viewer's* zone — use `core_date::get_server_timezone()` for
@@ -3874,6 +3899,28 @@ Check: for any plugin with request entry points, walk the checklist at the end
 of [reference.md](reference.md) and report each line as pass / fail / N/A.
 Do it after classes 1–9; where the two overlap, report the finding once.
 
+## 11. Authored definitions and imports that reach other users
+
+**Seen in reviews:** a plugin let admins write content definitions (questions, defaults, labels)
+that teachers then used. A default could name a site setting, `"config:<plugin>/<name>"`, which
+the plugin resolved with `get_config()` for **any** name, so `config:core/dbpass` came back filled
+into a form field. An import in "replace" mode kept the replaced item enabled, so an untrusted file
+went live at once.
+
+Check, for any plugin whose stored definitions, templates or imports are shown to other users:
+- **Settings read by name:** if data can name a setting, is the name limited to an allowlist of
+  what it is for (e.g. course and activity defaults)? Never values from `config.php`
+  (`$CFG->config_php_settings`, `$CFG->forced_plugin_settings`) and never names like
+  pass|secret|key|token|salt. Is the same rule applied at **every** entry path: editor, JSON
+  editor, import, AI proposal, and the runtime resolver for rows stored before the rule?
+- **Imports land as drafts:** new, copied **and replaced** items wait for a review step before
+  other users see them.
+- **The capability that authors them** carries `RISK_XSS` (as well as `RISK_CONFIG` if it
+  changes site behaviour), because what it writes is rendered for others.
+
+Fix: one allow-rule shared by the validator and the resolver, tested with a forbidden name in a
+stored row; set the draft status explicitly in every import branch.
+
 ## Common mistakes
 
 | Mistake | Why it fails review | Fix |
@@ -3890,11 +3937,15 @@ Do it after classes 1–9; where the two overlap, report the finding once.
 | "CI is green" as evidence | Empty `tests/` passes vacuously | List the tests that cover each sink |
 | No root `LICENSE`, or only `LICENSE.md`/`COPYING`, or export-ignored | The GPL text must ship with the code | Track the full GPLv3 text as `LICENSE`; keep it out of export-ignore |
 | `lang/ja/` (or any non-English pack) in the release | The Plugins directory takes `lang/en` only; translations go through AMOS | Keep only `lang/en/` in the repo and the tag |
+| `s()` left off a formslib label or `html_writer::select()` option | Core prints both as HTML | Escape authored or stored text before passing it |
+| Data can name any setting for `get_config()` | `config:core/dbpass` reaches a form field | Allowlist by purpose; refuse config.php and credential names everywhere |
+| A replace-import keeps the item live | Untrusted content reaches users without review | Every import lands as a draft |
+| Overlaying values on a core form's defaults | Frozen, capability-gated fields get set | Skip frozen elements; use core's constant |
 
 ## Report format
 
 A short table: class → pass / fail / N/A → evidence, with class 10 as one row
-per reference.md checklist group. List each fail with file:line and the fix
+per reference.md checklist group, and class 11 as one row. List each fail with file:line and the fix
 pattern. Do not fix unless asked.
 
 ## Extending this checklist
