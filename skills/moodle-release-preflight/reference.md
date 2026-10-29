@@ -1,11 +1,11 @@
 # Extended security checklist
 
-The nine classes in [SKILL.md](SKILL.md) are the defects that external reviews caught in
+Classes 1–6 in [SKILL.md](SKILL.md) are the defects that external reviews caught in
 our own shipped plugins. This file widens the net. It comes from a static audit of several
 dozen widely installed third-party plugins, and each class below was found in more than
 one of them. Examples are described generically.
 
-Walk it for every request entry point after the nine core classes. Report each line of the
+Walk it for every request entry point after classes 1–6. Report each line of the
 [checklist](#checklist) as pass / fail (file:line) / N/A (reason).
 
 ## How to run it
@@ -182,6 +182,37 @@ G() { grep -rnE --include='*.php' --exclude-dir={thirdparty,vendor,node_modules,
 - **Debug parameters** that show SQL to non-admins.
 - **Spoofable conditions:** user-agent detection used as access control. It is advisory
   only, especially on AJAX and WS requests, which carry no browser headers you can trust.
+
+## Release files
+
+Class 6 of [SKILL.md](SKILL.md) points here.
+
+**A `LICENSE` file at the repository root**, holding the full text of the licence the plugin declares
+(GPL-3.0-or-later for a Moodle plugin: the GNU GPL version 3 text). It must be tracked and must ship in
+the distribution ZIP, so check all three:
+
+```bash
+git ls-files --error-unmatch LICENSE                  # tracked (a README link or LICENSE.md alone is not enough)
+grep -q 'Version 3, 29 June 2007' LICENSE              # the GPLv3 text, matching the file headers and composer.json
+git check-attr export-ignore -- LICENSE                # must NOT say "set": export-ignore drops it from the ZIP
+```
+
+Fail it if the file is missing, named differently only (`LICENSE.md`, `COPYING`), untracked, a stub
+pointing elsewhere, a different licence from the one the headers declare, or export-ignored. Third-party
+notices (a `LICENSES/` folder, `thirdpartylibs.xml` entries) are in addition to it, not instead.
+
+**Only the English language pack ships.** A Plugins directory (Marketplace) release carries `lang/en/`
+only; other languages are contributed through AMOS and arrive with Moodle's language packs. Keep
+translations (`lang/ja/` and the like) out of the repository, e.g. in the developer's own notes, and
+check both the working tree and the release tag:
+
+```bash
+git ls-files lang | grep -v '^lang/en/'                         # must print nothing
+git ls-tree -r --name-only vX.Y.Z -- lang | grep -v '^lang/en/'   # the tag about to be submitted
+```
+
+Fail it on any other language folder. An `export-ignore` line does not count as a pass: the tag
+itself must not carry it, since some installers fetch the tagged tree rather than the ZIP.
 
 ## Checklist
 
