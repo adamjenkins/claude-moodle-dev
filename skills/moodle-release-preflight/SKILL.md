@@ -281,6 +281,25 @@ privacy)? If CI runs test steps over an empty `tests/`, say so.
 
 ## 6. Minor gates (cheap, recurring)
 
+- **Namespace collisions: an approval blocker, whatever this section's title says.** A Plugins
+  directory review held back a plugin for one global helper function in a top-level page. phpcs
+  and CI stayed green. Every global function, global class and `define()`d constant needs the
+  frankenstyle prefix, including helpers in top-level pages and `cli/` scripts, which is where they
+  hide. An `xmldb_<component>_*` function is fine. For `mod_`, core's own prefix is the bare
+  module name, so set `c` below to that.
+
+  ```bash
+  c=local_myplugin
+  grep -rnE '^(abstract |final )?(function|class|interface|trait) +[A-Za-z_0-9]+' --include='*.php' \
+      --exclude-dir=classes --exclude-dir=tests --exclude-dir=thirdparty --exclude-dir=vendor . \
+      | grep -vE ":(abstract |final )?(function|class|interface|trait) +(xmldb_)?${c}_"
+  grep -rnE "^ *define\('" --include='*.php' --exclude-dir=tests --exclude-dir=thirdparty --exclude-dir=vendor . \
+      | grep -vE "define\('(CLI_SCRIPT|AJAX_SCRIPT|NO_MOODLE_COOKIES|NO_DEBUG_DISPLAY|READ_ONLY_SESSION|MOODLE_INTERNAL)'|define\('$(echo "$c" | tr a-z A-Z)_"
+  ```
+
+  Each line printed is a finding, or needs a reason. No output with exit 1 is the pass; check that
+  `grep` itself ran. Fix: rename to `<component>_<name>()`, or move the code into a class under
+  `classes/`, where the namespace does the job.
 - `error_log()` in a best-effort `catch` — flagged by phpcs. Prefer silent
   handling, `debugging()`, or an event; if kept, document why and add the
   `phpcs:ignore`.
@@ -335,6 +354,7 @@ capability whose writes are rendered for other users (3b).
 | Data can name any setting for `get_config()` | `config:core/dbpass` reaches a form field | Allowlist by purpose; refuse config.php and credential names everywhere |
 | A replace-import keeps the item live | Untrusted content reaches users without review | Every import lands as a draft |
 | Overlaying values on a core form's defaults | Frozen, capability-gated fields get set | Skip frozen elements; use core's constant |
+| Unprefixed helper function in a top-level page or `cli/` script | Namespace collision: an approval blocker | `<component>_<name>()`, or a class under `classes/` |
 
 ## Report format
 
